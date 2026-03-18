@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>🍊 Delluga WHS Mobile</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍊</text></svg>">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.8.4/dist/quagga.min.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif; background: #f5f7fa; margin: 0; padding: 0; }
+    .tab-active { background: #4f46e5; color: white; }
+    .tab-inactive { background: #e2e8f0; color: #64748b; }
+    .scan-line { position:absolute; top:50%; left:8%; right:8%; height:2px; background:rgba(239,68,68,0.7); transform:translateY(-50%); pointer-events:none; animation: scanPulse 1.5s ease-in-out infinite; }
+    @keyframes scanPulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+    .sku-done { border-left: 4px solid #10b981; }
+    .sku-partial { border-left: 4px solid #f59e0b; }
+    .sku-none { border-left: 4px solid #e2e8f0; }
+    .badge-picked { background: #d1fae5; color: #065f46; }
+    .badge-unpicked { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- 로그인 -->
+<div id="loginOverlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+  <div class="w-full max-w-sm px-6">
+    <div class="text-center mb-8">
+      <div class="text-5xl mb-3">🍊</div>
+      <h1 class="text-xl font-bold text-slate-800">Delluga WHS</h1>
+      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템</p>
+    </div>
+    <input id="loginPw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
+    <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
+    <div id="loginError" class="text-red-500 text-sm text-center mt-2 hidden"></div>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div id="appMain" class="hidden">
+  <!-- 헤더 -->
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">🍊</span>
+      <span class="font-bold text-slate-700 text-lg">WHS</span>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="/?desktop=1" class="text-xs text-slate-400 underline">PC버전</a>
+      <button id="btnLogout" class="text-xs text-slate-400"><i class="fa-solid fa-right-from-bracket"></i></button>
+    </div>
+  </header>
+
+  <!-- 탭 -->
+  <nav class="flex gap-2 p-3 bg-white border-b border-slate-100">
+    <button id="tabPicking" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-active transition" onclick="switchTab('picking')">
+      <i class="fa-solid fa-boxes-stacked mr-1"></i>피킹
+    </button>
+    <button id="tabUpload" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition" onclick="switchTab('upload')">
+      <i class="fa-solid fa-cloud-arrow-up mr-1"></i>업로드
+    </button>
+    <button id="tabStatus" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition" onclick="switchTab('status')">
+      <i class="fa-solid fa-chart-pie mr-1"></i>현황
+    </button>
+  </nav>
+
+  <!-- 피킹 탭 -->
+  <div id="viewPicking" class="p-3">
+    <!-- 세션 선택 -->
+    <div id="sessionPicker" class="mb-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-list mr-1"></i>업로드 세션</span>
+        <button id="btnRefreshSessions" class="text-xs text-indigo-500 font-semibold" onclick="loadSessions()"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button>
+      </div>
+      <div id="sessionList" class="space-y-2 max-h-[35vh] overflow-y-auto">
+        <div class="text-center text-slate-400 py-6 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 현황 바 -->
+    <div id="pickingStats" class="hidden grid grid-cols-3 gap-2 mb-3">
+      <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-center">
+        <div class="text-[10px] text-emerald-500 font-semibold">완료</div>
+        <div id="statDone" class="text-lg font-bold text-emerald-600">0</div>
+      </div>
+      <div class="rounded-xl bg-amber-50 border border-amber-200 p-2.5 text-center">
+        <div class="text-[10px] text-amber-500 font-semibold">미피킹</div>
+        <div id="statRemain" class="text-lg font-bold text-amber-600">0</div>
+      </div>
+      <div class="rounded-xl bg-indigo-50 border border-indigo-200 p-2.5 text-center">
+        <div class="text-[10px] text-indigo-500 font-semibold">전체SKU</div>
+        <div id="statTotal" class="text-lg font-bold text-indigo-600">0</div>
+      </div>
+    </div>
+
+    <!-- 진행률 -->
+    <div id="progressWrap" class="hidden mb-3">
+      <div class="flex justify-between text-xs text-slate-400 mb-1">
+        <span>진행률</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+        <div id="progressBar" class="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- 바코드 스캐너 -->
+    <div id="scannerArea" class="hidden mb-3">
+      <div class="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 overflow-hidden relative">
+        <div id="scannerViewport" style="width:100%; height:200px; background:#111; position:relative;">
+          <div class="scan-line"></div>
+        </div>
+        <div class="flex justify-center gap-2 py-2.5">
+          <button id="btnStartScan" class="px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600" onclick="startScanner()">
+            <i class="fa-solid fa-barcode mr-1"></i>스캔
+          </button>
+          <button id="btnStopScan" class="px-4 py-2 rounded-xl bg-slate-400 text-white text-sm font-semibold hidden" onclick="stopScanner()">
+            <i class="fa-solid fa-stop mr-1"></i>중지
+          </button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="photoScan()">
+            <i class="fa-solid fa-camera mr-1"></i>촬영
+          </button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="manualInput()">
+            <i class="fa-solid fa-keyboard mr-1"></i>입력
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 마지막 스캔 결과 -->
+    <div id="lastScanResult" class="hidden rounded-2xl border border-slate-200 bg-white p-3 mb-3 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div id="lastScanImg" class="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+          <i class="fa-solid fa-image text-slate-300 text-xl"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div id="lastScanSku" class="font-mono font-bold text-base text-slate-800"></div>
+          <div id="lastScanName" class="text-xs text-slate-500 truncate"></div>
+          <div class="flex items-center gap-2 mt-0.5">
+            <span id="lastScanPicked" class="text-sm font-semibold text-emerald-600"></span>
+            <span id="lastScanTarget" class="text-xs text-slate-400"></span>
+          </div>
+        </div>
+        <div id="lastScanBadge" class="text-2xl font-bold"></div>
+      </div>
+    </div>
+
+    <!-- SKU 리스트 -->
+    <div id="skuList" class="space-y-1.5 max-h-[45vh] overflow-y-auto"></div>
+  </div>
+
+  <!-- 업로드 탭 -->
+  <div id="viewUpload" class="p-3 hidden">
+    <div class="rounded-2xl border-2 border-dashed border-indigo-300 bg-white p-6 text-center">
+      <i class="fa-solid fa-cloud-arrow-up text-4xl text-indigo-300 mb-3"></i>
+      <p class="text-sm text-slate-500 mb-3">사입리스트 엑셀 파일 업로드</p>
+      <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden">
+      <button class="px-6 py-3 rounded-xl bg-indigo-500 text-white font-semibold active:bg-indigo-600" onclick="document.getElementById('fileInput').click()">
+        <i class="fa-solid fa-file-arrow-up mr-2"></i>파일 선택
+      </button>
+    </div>
+    <div id="uploadStatus" class="mt-3 text-sm text-slate-500 text-center"></div>
+    <div id="uploadLog" class="mt-3"></div>
+  </div>
+
+  <!-- 현황 탭 -->
+  <div id="viewStatus" class="p-3 hidden">
+    <div id="statusContent" class="space-y-3">
+      <div class="text-center text-slate-400 py-8"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── API ──
+const GAS_API = 'https://script.google.com/macros/s/AKfycbzkuHhpmNdmcodBb_bRc4IXs4oND9WP1Ijqhw1qNNR9x4omSc_eS4E2vVHpYrmxcKbd/exec';
+
+async function api(action, params = {}) {
+  const body = { action, ...params };
+  const resp = await fetch(GAS_API, {
+    method: 'POST', redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(body),
+  });
+  return resp.json();
+}
+
+// ── 상태 ──
+let sessions = [];
+let currentSession = null;
+let skuMap = new Map(); // sku → { name, target, picked, rack }
+let scannerRunning = false;
+let imageCache = {};
+
+// ── 로그인 ──
+document.getElementById('btnLogin').onclick = async () => {
+  const pw = document.getElementById('loginPw').value.trim();
+  if (!pw) { showLoginError('비밀번호를 입력하세요.'); return; }
+  try {
+    const r = await api('checkPassword', { password: pw });
+    if (r.ok) {
+      document.getElementById('loginOverlay').style.display = 'none';
+      document.getElementById('appMain').classList.remove('hidden');
+      sessionStorage.setItem('whs_login', '1');
+      loadSessions();
+    } else {
+      showLoginError(r.error || '비밀번호가 올바르지 않습니다.');
+    }
+  } catch(e) { showLoginError('서버 오류: ' + e.message); }
+};
+document.getElementById('loginPw').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('btnLogin').click(); };
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg; el.classList.remove('hidden');
+}
+
+// 자동 로그인
+if (sessionStorage.getItem('whs_login')) {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('appMain').classList.remove('hidden');
+  loadSessions();
+}
+
+document.getElementById('btnLogout').onclick = () => {
+  sessionStorage.removeItem('whs_login');
+  location.reload();
+};
+
+// ── 탭 전환 ──
+function switchTab(tab) {
+  ['picking','upload','status'].forEach(t => {
+    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).className =
+      'flex-1 py-2 rounded-lg text-sm font-semibold transition ' + (t === tab ? 'tab-active' : 'tab-inactive');
+    document.getElementById('view' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
+  });
+  if (tab === 'status') loadStatus();
+  if (tab !== 'picking' && scannerRunning) stopScanner();
+}
+
+// ── 세션 목록 ──
+async function loadSessions() {
+  const el = document.getElementById('sessionList');
+  el.innerHTML = '<div class="text-center text-slate-400 py-6 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>';
+  try {
+    const r = await api('getUploadSessions', { days: 7 });
+    if (!r.ok) { el.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">오류: ' + r.error + '</div>'; return; }
+    sessions = r.sessions || [];
+    if (!sessions.length) {
+      el.innerHTML = '<div class="text-center text-slate-400 py-6 text-sm">최근 7일간 업로드된 데이터가 없습니다.</div>';
+      return;
+    }
+    el.innerHTML = sessions.map(s => {
+      const dt = new Date(s.uploadTimestamp);
+      const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      const badge = s.picked
+        ? '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold badge-picked ml-1.5"><i class="fa-solid fa-check mr-0.5"></i>완료</span>'
+        : '<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold badge-unpicked ml-1.5"><i class="fa-solid fa-clock mr-0.5"></i>미피킹</span>';
+      const border = s.picked ? 'border-emerald-200' : 'border-indigo-200';
+      const bg = s.picked ? 'bg-emerald-50/50' : 'bg-indigo-50/50';
+      return `<button onclick="selectSession('${s.uploadTimestamp}')" class="w-full text-left rounded-xl border ${border} ${bg} p-3 active:opacity-70 transition">
+        <div class="flex items-center justify-between">
+          <div><span class="font-semibold text-slate-700">${label}</span>${badge}</div>
+          <span class="text-sm font-semibold text-slate-500">${s.count.toLocaleString()}건</span>
+        </div>
+        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
+      </button>`;
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">로드 실패: ' + e.message + '</div>';
+  }
+}
+
+// ── 세션 선택 → 피킹 데이터 로드 ──
+async function selectSession(ts) {
+  const sess = sessions.find(s => s.uploadTimestamp === ts);
+  if (sess && sess.picked && !confirm('이미 피킹 완료된 세션입니다.\n다시 피킹하시겠습니까?')) return;
+
+  currentSession = ts;
+  skuMap.clear();
+  document.getElementById('sessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-indigo-500"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>데이터 로드 중...</div>';
+
+  try {
+    const r = await api('getOrdersByUploadSession', { uploadTimestamp: ts });
+    if (!r.ok || !r.rows.length) {
+      document.getElementById('sessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-slate-400">데이터 없음</div><button onclick="resetPicking()" class="text-xs text-indigo-500 underline">← 세션 목록</button>';
+      return;
+    }
+
+    // SKU 집계
+    for (const row of r.rows) {
+      const sku = (row.sku || '').trim();
+      if (!sku) continue;
+      if (skuMap.has(sku)) {
+        skuMap.get(sku).target += Number(row.qty) || 0;
+      } else {
+        skuMap.set(sku, { name: row.skuName || '', target: Number(row.qty) || 0, picked: 0, imgUrl: null });
+      }
+    }
+
+    // UI 업데이트
+    const dt = new Date(ts);
+    const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('sessionPicker').innerHTML =
+      `<div class="flex items-center justify-between">
+        <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-boxes-stacked mr-1"></i>${label} · ${r.rows.length}건 · SKU ${skuMap.size}종</div>
+        <button onclick="resetPicking()" class="text-xs text-slate-400 underline">← 목록</button>
+      </div>`;
+
+    document.getElementById('pickingStats').classList.remove('hidden');
+    document.getElementById('progressWrap').classList.remove('hidden');
+    document.getElementById('scannerArea').classList.remove('hidden');
+
+    // 이미지 로드
+    loadSkuImages();
+    renderSkuList();
+    updateStats();
+
+    // 피킹 이력 저장 (미피킹인 경우)
+    if (!sess || !sess.picked) {
+      api('savePickingLog', { uploadTimestamp: ts, rowCount: r.rows.length, pickedBy: 'mobile_user' }).catch(()=>{});
+    }
+  } catch(e) {
+    document.getElementById('sessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-red-400">오류: ' + e.message + '</div><button onclick="resetPicking()" class="text-xs text-indigo-500 underline">← 세션 목록</button>';
+  }
+}
+
+function resetPicking() {
+  currentSession = null;
+  skuMap.clear();
+  document.getElementById('pickingStats').classList.add('hidden');
+  document.getElementById('progressWrap').classList.add('hidden');
+  document.getElementById('scannerArea').classList.add('hidden');
+  document.getElementById('lastScanResult').classList.add('hidden');
+  document.getElementById('skuList').innerHTML = '';
+  document.getElementById('sessionPicker').innerHTML =
+    '<div class="flex items-center justify-between mb-2"><span class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-list mr-1"></i>업로드 세션</span><button class="text-xs text-indigo-500 font-semibold" onclick="loadSessions()"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button></div><div id="sessionList" class="space-y-2 max-h-[35vh] overflow-y-auto"></div>';
+  loadSessions();
+}
+
+// ── 스캔/피킹 ──
+function handleScan(code) {
+  if (!code || !skuMap.size) return;
+  const sku = code.trim().toUpperCase();
+  // SKU 매칭 (정확 매칭 or 포함 매칭)
+  let matched = null;
+  if (skuMap.has(sku)) matched = sku;
+  else {
+    for (const [k] of skuMap) {
+      if (k.toUpperCase() === sku || k.toUpperCase().includes(sku) || sku.includes(k.toUpperCase())) { matched = k; break; }
+    }
+  }
+
+  if (!matched) {
+    // 진동 피드백
+    if (navigator.vibrate) navigator.vibrate([100,50,100]);
+    document.getElementById('lastScanResult').classList.remove('hidden');
+    document.getElementById('lastScanSku').textContent = code;
+    document.getElementById('lastScanName').textContent = '등록되지 않은 SKU';
+    document.getElementById('lastScanPicked').textContent = '';
+    document.getElementById('lastScanTarget').textContent = '';
+    document.getElementById('lastScanBadge').innerHTML = '<span class="text-red-400">✗</span>';
+    return;
+  }
+
+  const info = skuMap.get(matched);
+  info.picked++;
+  if (navigator.vibrate) navigator.vibrate(50);
+
+  // 마지막 스캔 표시
+  document.getElementById('lastScanResult').classList.remove('hidden');
+  document.getElementById('lastScanSku').textContent = matched;
+  document.getElementById('lastScanName').textContent = info.name;
+  document.getElementById('lastScanPicked').textContent = `${info.picked}/${info.target}`;
+  document.getElementById('lastScanTarget').textContent = info.picked >= info.target ? '완료!' : `${info.target - info.picked}개 남음`;
+  if (info.imgUrl) {
+    document.getElementById('lastScanImg').innerHTML = `<img src="${info.imgUrl}" class="w-full h-full object-cover">`;
+  }
+  const pct = Math.round((info.picked / info.target) * 100);
+  document.getElementById('lastScanBadge').innerHTML = info.picked >= info.target
+    ? '<span class="text-emerald-500">✓</span>'
+    : `<span class="text-indigo-500">${pct}%</span>`;
+
+  renderSkuList();
+  updateStats();
+}
+
+function manualInput() {
+  const code = prompt('SKU 코드를 입력하세요:');
+  if (code && code.trim()) handleScan(code.trim());
+}
+
+// ── 바코드 스캐너 ──
+let _lastCode = '', _lastTime = 0;
+
+async function startScanner() {
+  if (scannerRunning) return;
+  const vp = document.getElementById('scannerViewport');
+
+  // 카메라 권한 체크
+  let cameraOk = false;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    stream.getTracks().forEach(t => t.stop());
+    cameraOk = true;
+  } catch(e) { console.warn('카메라 불가:', e); }
+
+  if (!cameraOk) {
+    vp.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center"><i class="fa-solid fa-video-slash text-2xl text-red-300 mb-2"></i><div class="text-xs">카메라 사용 불가</div><div class="text-xs mt-1">아래 [촬영] 또는 [입력] 사용</div></div>';
+    return;
+  }
+
+  if (typeof Quagga === 'undefined') { alert('QuaggaJS 로드 실패'); return; }
+  vp.innerHTML = '<div class="scan-line"></div>';
+
+  Quagga.init({
+    inputStream: { name:'Live', type:'LiveStream', target:vp, constraints:{ facingMode:'environment', width:{ideal:640}, height:{ideal:480} } },
+    decoder: { readers:['code_128_reader','ean_reader','ean_8_reader','code_39_reader','upc_reader','upc_e_reader','codabar_reader'] },
+    locate: true, frequency: 10
+  }, function(err) {
+    if (err) { vp.innerHTML = '<div class="text-center text-red-400 p-4 text-sm">' + (err.message||'카메라 시작 실패') + '</div>'; return; }
+    Quagga.start();
+    scannerRunning = true;
+    document.getElementById('btnStartScan').classList.add('hidden');
+    document.getElementById('btnStopScan').classList.remove('hidden');
+  });
+
+  Quagga.offDetected();
+  Quagga.onDetected(function(result) {
+    const code = result.codeResult.code;
+    if (!code) return;
+    if (code === _lastCode && Date.now() - _lastTime < 1000) return;
+    _lastCode = code; _lastTime = Date.now();
+    handleScan(code);
+  });
+}
+
+function stopScanner() {
+  if (!scannerRunning) return;
+  try { Quagga.stop(); Quagga.offDetected(); } catch(e){}
+  scannerRunning = false;
+  document.getElementById('btnStartScan').classList.remove('hidden');
+  document.getElementById('btnStopScan').classList.add('hidden');
+}
+
+function photoScan() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const url = URL.createObjectURL(file);
+    if (typeof Quagga !== 'undefined') {
+      Quagga.decodeSingle({
+        src: url, numOfWorkers: 0, locate: true,
+        decoder: { readers:['code_128_reader','ean_reader','ean_8_reader','code_39_reader','upc_reader'] }
+      }, function(result) {
+        URL.revokeObjectURL(url);
+        if (result && result.codeResult && result.codeResult.code) {
+          handleScan(result.codeResult.code);
+        } else {
+          const code = prompt('바코드 인식 실패. SKU를 직접 입력:');
+          if (code) handleScan(code.trim());
+        }
+      });
+    } else {
+      URL.revokeObjectURL(url);
+      const code = prompt('SKU를 입력하세요:');
+      if (code) handleScan(code.trim());
+    }
+  };
+  input.click();
+}
+
+// ── SKU 이미지 로드 ──
+async function loadSkuImages() {
+  const skuList = Array.from(skuMap.keys());
+  try {
+    const r = await api('serverGetSkuImages', { skuList });
+    if (r.ok && r.images) {
+      for (const [sku, url] of Object.entries(r.images)) {
+        imageCache[sku] = url;
+        if (skuMap.has(sku)) skuMap.get(sku).imgUrl = url;
+      }
+      renderSkuList();
+    }
+  } catch(e) { console.log('이미지 로드 실패:', e); }
+}
+
+// ── UI 렌더링 ──
+function renderSkuList() {
+  const el = document.getElementById('skuList');
+  const entries = Array.from(skuMap.entries()).sort((a,b) => {
+    const aDone = a[1].picked >= a[1].target ? 1 : 0;
+    const bDone = b[1].picked >= b[1].target ? 1 : 0;
+    return aDone - bDone || a[0].localeCompare(b[0]);
+  });
+
+  el.innerHTML = entries.map(([sku, info]) => {
+    const done = info.picked >= info.target;
+    const partial = info.picked > 0 && !done;
+    const cls = done ? 'sku-done opacity-60' : partial ? 'sku-partial' : 'sku-none';
+    const img = info.imgUrl ? `<img src="${info.imgUrl}" class="w-10 h-10 rounded-lg object-cover">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center"><i class="fa-solid fa-image text-slate-300 text-xs"></i></div>`;
+    return `<div class="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}">
+      ${img}
+      <div class="flex-1 min-w-0">
+        <div class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</div>
+        <div class="text-[11px] text-slate-400 truncate">${info.name}</div>
+      </div>
+      <div class="text-right shrink-0">
+        <div class="text-sm font-bold ${done ? 'text-emerald-500' : partial ? 'text-amber-500' : 'text-slate-400'}">${info.picked}/${info.target}</div>
+        ${done ? '<div class="text-[10px] text-emerald-500">완료</div>' : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateStats() {
+  let done = 0, total = skuMap.size;
+  for (const [, info] of skuMap) {
+    if (info.picked >= info.target) done++;
+  }
+  document.getElementById('statDone').textContent = done;
+  document.getElementById('statRemain').textContent = total - done;
+  document.getElementById('statTotal').textContent = total;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressPct').textContent = pct + '%';
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+// ── 파일 업로드 ──
+document.getElementById('fileInput').onchange = async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const status = document.getElementById('uploadStatus');
+  status.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-1"></i>파일 읽는 중...';
+
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type:'array', codepage:65001 });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header:1 });
+    if (rows.length < 2) { status.textContent = '데이터 없음'; return; }
+
+    const headers = rows[0].map(h => String(h||'').trim());
+    // 헤더 매칭
+    const skuCands = ['SKU코드','SKU','sku코드','sku','품목코드'];
+    const qtyCands = ['총출고수량','수량','qty','출고수량'];
+    const nameCands = ['sku상품명','상품명','품목명','skuName'];
+    const marketCands = ['쇼핑몰','마켓','market','채널'];
+    const orderCands = ['주문번호','orderNo','주문no','주문No'];
+    const amtCands = ['금액','amount','결제금액'];
+    const recipCands = ['수령자명','수령자','받는분','recipient'];
+    const attrCands = ['SKU상품속성','속성','옵션','attr'];
+    const trackCands = ['운송장번호','운송장','trackingNo','송장번호'];
+
+    function findIdx(cands) { return headers.findIndex(h => cands.some(c => h.includes(c) || h.toLowerCase() === c.toLowerCase())); }
+    const iSku = findIdx(skuCands), iQty = findIdx(qtyCands), iName = findIdx(nameCands);
+    const iMarket = findIdx(marketCands), iOrder = findIdx(orderCands);
+    const iAmt = findIdx(amtCands), iRecip = findIdx(recipCands);
+    const iAttr = findIdx(attrCands), iTrack = findIdx(trackCands);
+
+    if (iSku < 0 || iQty < 0) { status.textContent = 'SKU코드 또는 수량 컬럼을 찾을 수 없습니다.'; return; }
+
+    const uploadDate = file.name.replace(/[^0-9]/g,'').slice(0,8) || new Date().toISOString().slice(0,10).replace(/-/g,'');
+    const serverRows = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const sku = String(r[iSku]||'').trim(); if (!sku) continue;
+      serverRows.push({
+        orderNo: iOrder >= 0 ? String(r[iOrder]||'').trim() : `${file.name}_row_${i}`,
+        sku, skuName: iName >= 0 ? String(r[iName]||'').trim() : '',
+        qty: Number(r[iQty]) || 0,
+        market: iMarket >= 0 ? String(r[iMarket]||'').trim() : '',
+        amount: iAmt >= 0 ? Number(String(r[iAmt]||'0').replace(/[^0-9.-]/g,'')) || 0 : 0,
+        recipient: iRecip >= 0 ? String(r[iRecip]||'').trim() : '',
+        attr: iAttr >= 0 ? String(r[iAttr]||'').trim() : '',
+        trackingNo: iTrack >= 0 ? String(r[iTrack]||'').trim() : '',
+        uploadDate
+      });
+    }
+
+    status.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-1"></i>${serverRows.length}건 서버 저장 중...`;
+    const result = await api('serverUploadOrders', { rows: serverRows, uploadedBy: 'mobile_user' });
+
+    if (result.ok) {
+      status.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500 mr-1"></i>${file.name} · 저장 ${result.saved}건 · 중복 ${result.duplicates}건`;
+      // 세션 목록 새로고침
+      setTimeout(() => { switchTab('picking'); loadSessions(); }, 1500);
+    } else {
+      status.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400 mr-1"></i>실패: ${result.error}`;
+    }
+  } catch(e) {
+    status.textContent = '오류: ' + e.message;
+  }
+  e.target.value = '';
+};
+
+// ── 현황 ──
+async function loadStatus() {
+  const el = document.getElementById('statusContent');
+  try {
+    const r = await api('getOrdersCount');
+    const today = new Date();
+    const ymd = today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
+    const summary = await api('getTodaySummary', { date: ymd });
+
+    el.innerHTML = `
+      <div class="bg-white rounded-2xl p-4 border border-slate-100">
+        <div class="text-xs text-slate-400 font-semibold mb-2">전체 현황</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-indigo-600">${(r.total||0).toLocaleString()}</div>
+            <div class="text-xs text-slate-400">총 주문</div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold text-emerald-600">${((summary.ok && summary.count)||0).toLocaleString()}</div>
+            <div class="text-xs text-slate-400">오늘 전송</div>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl p-4 border border-slate-100">
+        <div class="text-xs text-slate-400 font-semibold mb-2">최근 업로드 세션</div>
+        <div id="statusSessions" class="text-sm text-slate-500">로딩 중...</div>
+      </div>`;
+
+    const sessR = await api('getUploadSessions', { days: 3 });
+    const sessEl = document.getElementById('statusSessions');
+    if (sessR.ok && sessR.sessions.length) {
+      sessEl.innerHTML = sessR.sessions.slice(0, 5).map(s => {
+        const dt = new Date(s.uploadTimestamp);
+        const lbl = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+        return `<div class="flex justify-between py-1 border-b border-slate-50"><span>${lbl}</span><span>${s.count}건 ${s.picked?'✅':'⏳'}</span></div>`;
+      }).join('');
+    } else {
+      sessEl.textContent = '데이터 없음';
+    }
+  } catch(e) {
+    el.innerHTML = '<div class="text-center text-red-400 py-4">오류: ' + e.message + '</div>';
+  }
+}
+</script>
+</body>
+</html>
