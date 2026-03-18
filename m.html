@@ -384,10 +384,13 @@ function handleScan(code) {
   const sku = code.trim().toUpperCase();
   // SKU 매칭 (정확 매칭 or 포함 매칭)
   let matched = null;
+  const skuRev = sku.split('').reverse().join(''); // 역방향 스캔 대응
   if (skuMap.has(sku)) matched = sku;
+  else if (skuMap.has(skuRev)) matched = skuRev;
   else {
     for (const [k] of skuMap) {
-      if (k.toUpperCase() === sku || k.toUpperCase().includes(sku) || sku.includes(k.toUpperCase())) { matched = k; break; }
+      const ku = k.toUpperCase();
+      if (ku === sku || ku === skuRev || ku.includes(sku) || sku.includes(ku) || ku.includes(skuRev)) { matched = k; break; }
     }
   }
 
@@ -395,10 +398,10 @@ function handleScan(code) {
     // 실패 피드백
     beepError();
     if (navigator.vibrate) navigator.vibrate([100,50,100]);
-    speak('등록되지 않은 SKU입니다. 다른 SKU를 스캔하세요.');
+    speak('없는 SKU입니다');
     document.getElementById('lastScanResult').classList.remove('hidden');
     document.getElementById('lastScanSku').textContent = code;
-    document.getElementById('lastScanName').textContent = '등록되지 않은 SKU — 다른 SKU를 스캔하세요';
+    document.getElementById('lastScanName').textContent = '없는 SKU입니다';
     document.getElementById('lastScanPicked').textContent = '';
     document.getElementById('lastScanTarget').textContent = '';
     document.getElementById('lastScanBadge').innerHTML = '<span class="text-red-400">✗</span>';
