@@ -179,12 +179,24 @@ const GAS_API = 'https://script.google.com/macros/s/AKfycbzkuHhpmNdmcodBb_bRc4IX
 
 async function api(action, params = {}) {
   const body = { action, ...params };
-  const resp = await fetch(GAS_API, {
-    method: 'POST', redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(body),
-  });
-  return resp.json();
+  try {
+    const resp = await fetch(GAS_API, {
+      method: 'POST', redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(body),
+    });
+    const text = await resp.text();
+    try { return JSON.parse(text); }
+    catch(e) { console.error('API parse error:', text.substring(0, 300)); throw new Error('응답 파싱 실패'); }
+  } catch(fetchErr) {
+    // fetch 실패 시 JSONP 스타일 fallback (GET)
+    console.warn('POST failed, trying GET fallback:', fetchErr);
+    const encoded = encodeURIComponent(JSON.stringify(body));
+    const resp2 = await fetch(GAS_API + '?payload=' + encoded, { redirect: 'follow' });
+    const text2 = await resp2.text();
+    try { return JSON.parse(text2); }
+    catch(e2) { throw new Error('API 오류: ' + text2.substring(0, 200)); }
+  }
 }
 
 // ── 상태 ──
@@ -291,7 +303,8 @@ async function selectSession(ts) {
 
     // SKU 집계
     for (const row of r.rows) {
-      const sku = (row.sku || '').trim();
+      if (!row || typeof row !== 'object') continue;
+      const sku = String(row.sku || '').trim();
       if (!sku) continue;
       if (skuMap.has(sku)) {
         skuMap.get(sku).target += Number(row.qty) || 0;
