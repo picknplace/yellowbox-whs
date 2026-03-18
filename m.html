@@ -353,6 +353,33 @@ function resetPicking() {
   loadSessions();
 }
 
+// ── 스캔 효과음 (Web Audio API) ──
+const _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function beep(freq, duration, type) {
+  try {
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.connect(gain); gain.connect(_audioCtx.destination);
+    osc.frequency.value = freq;
+    osc.type = type || 'square';
+    gain.gain.value = 0.3;
+    gain.gain.exponentialRampToValueAtTime(0.001, _audioCtx.currentTime + duration);
+    osc.start(); osc.stop(_audioCtx.currentTime + duration);
+  } catch(e) {}
+}
+function beepOk() { beep(1200, 0.1, 'square'); setTimeout(() => beep(1600, 0.1, 'square'), 80); }
+function beepComplete() { beep(800, 0.08, 'square'); setTimeout(() => beep(1200, 0.08, 'square'), 80); setTimeout(() => beep(1600, 0.15, 'square'), 160); }
+function beepError() { beep(300, 0.15, 'sawtooth'); setTimeout(() => beep(200, 0.2, 'sawtooth'), 150); }
+function speak(text) {
+  try {
+    if ('speechSynthesis' in window) {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR'; u.rate = 1.2; u.volume = 1;
+      speechSynthesis.speak(u);
+    }
+  } catch(e) {}
+}
+
 // ── 스캔/피킹 ──
 function handleScan(code) {
   if (!code || !skuMap.size) return;
@@ -367,11 +394,13 @@ function handleScan(code) {
   }
 
   if (!matched) {
-    // 진동 피드백
+    // 실패 피드백
+    beepError();
     if (navigator.vibrate) navigator.vibrate([100,50,100]);
+    speak('등록되지 않은 SKU입니다. 다른 SKU를 스캔하세요.');
     document.getElementById('lastScanResult').classList.remove('hidden');
     document.getElementById('lastScanSku').textContent = code;
-    document.getElementById('lastScanName').textContent = '등록되지 않은 SKU';
+    document.getElementById('lastScanName').textContent = '등록되지 않은 SKU — 다른 SKU를 스캔하세요';
     document.getElementById('lastScanPicked').textContent = '';
     document.getElementById('lastScanTarget').textContent = '';
     document.getElementById('lastScanBadge').innerHTML = '<span class="text-red-400">✗</span>';
@@ -380,6 +409,9 @@ function handleScan(code) {
 
   const info = skuMap.get(matched);
   info.picked++;
+  // 성공 피드백
+  if (info.picked >= info.target) { beepComplete(); speak('완료'); }
+  else { beepOk(); speak('정상'); }
   if (navigator.vibrate) navigator.vibrate(50);
 
   // 마지막 스캔 표시
