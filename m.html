@@ -412,21 +412,15 @@ function handleScan(code) {
   info.picked++;
   // 성공 피드백 (상황별 음성)
   const remain = info.target - info.picked;
-  if (info.picked >= info.target && remain <= 0) {
-    // 이 SKU 피킹 완료
+  if (remain <= 0) {
     beepComplete();
-    // 전체 완료 체크
     let allDone = true;
     for (const [, v] of skuMap) { if (v.picked < v.target) { allDone = false; break; } }
     if (allDone) speak('전체 피킹 완료');
-    else speak('SKU 피킹 완료');
-  } else if (remain > 0 && remain <= 3) {
-    // 같은 SKU 남아있음
-    beepOk();
-    speak(`성공. ${remain}개 남음`);
+    else speak('피킹 완료');
   } else {
     beepOk();
-    speak('성공');
+    speak(`성공. ${remain}개 남음`);
   }
   if (navigator.vibrate) navigator.vibrate(50);
 
