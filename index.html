@@ -328,6 +328,7 @@
         <div class="flex gap-3 flex-wrap">
           <button id="runPicking" class="btn-primary"><i class="fa-solid fa-play mr-2"></i>피킹 실행</button>
           <button id="btnServerPicking" class="px-4 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold hover:bg-indigo-600 transition shadow-sm"><i class="fa-solid fa-cloud-arrow-down mr-2"></i>서버 데이터로 피킹</button>
+          <button id="btnPickingStatus" class="px-4 py-2.5 rounded-xl bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 transition shadow-sm"><i class="fa-solid fa-clipboard-check mr-2"></i>피킹현황</button>
           <button id="printPicking" class="btn-purple"><i class="fa-solid fa-print mr-2"></i>인쇄</button>
           <button id="downloadPicking" class="btn-accent"><i class="fa-solid fa-download mr-2"></i>Excel</button>
         </div>
@@ -462,6 +463,39 @@
 
           <!-- SKU 리스트 -->
           <div id="mpSkuList" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>
+        </div>
+
+        <!-- 피킹현황 뷰 (서버 피킹 상세) -->
+        <div id="pickViewStatus" class="hidden">
+          <div id="pickStatusMeta" class="text-sm text-slate-400 mb-4"></div>
+          <div id="pickStatusSessions" class="space-y-2 mb-4"></div>
+          <div id="pickStatusDetail" class="hidden">
+            <div id="pickStatusSummary" class="grid grid-cols-4 gap-2 mb-4">
+              <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
+                <div class="text-[10px] text-emerald-500 font-semibold">완료</div>
+                <div id="psStatDone" class="text-xl font-bold text-emerald-600">0</div>
+              </div>
+              <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
+                <div class="text-[10px] text-amber-500 font-semibold">진행중</div>
+                <div id="psStatPartial" class="text-xl font-bold text-amber-600">0</div>
+              </div>
+              <div class="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
+                <div class="text-[10px] text-red-500 font-semibold">보류</div>
+                <div id="psStatHold" class="text-xl font-bold text-red-600">0</div>
+              </div>
+              <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                <div class="text-[10px] text-slate-500 font-semibold">미피킹</div>
+                <div id="psStatNone" class="text-xl font-bold text-slate-600">0</div>
+              </div>
+            </div>
+            <div class="flex gap-2 mb-4">
+              <button id="btnPickedToEcount" class="px-4 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition shadow-sm"><i class="fa-solid fa-file-export mr-2"></i>피킹완료건만 판매차감</button>
+              <button id="btnAllToEcount" class="px-4 py-2.5 rounded-xl bg-slate-500 text-white text-sm font-semibold hover:bg-slate-600 transition shadow-sm"><i class="fa-solid fa-file-export mr-2"></i>전체 리스트 판매차감</button>
+            </div>
+            <div class="overflow-x-auto rounded-2xl border border-slate-100">
+              <table id="pickStatusTable" class="table w-full text-sm"></table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1234,6 +1268,22 @@
 </div><!-- /appMain -->
 
 <script>
+  // ===== 바코드맵 (PC) =====
+  let _pcSkuInfo = {}; // sku → { barcode, imageUrl }
+  async function loadPcBarcodeMap() {
+    try {
+      const r = await gasRun("getBarcodeMap");
+      if (r.ok && r.data) {
+        _pcSkuInfo = {};
+        for (const item of r.data) {
+          const sku = String(item.sku || '').trim();
+          if (sku) _pcSkuInfo[sku] = { barcode: String(item.barcode || ''), imageUrl: String(item.imageUrl || '') };
+        }
+        console.log('PC 바코드맵 로드:', Object.keys(_pcSkuInfo).length, '건');
+      }
+    } catch(e) { console.warn('바코드맵 로드 실패:', e); }
+  }
+
   // ===== 로그인 =====
   let isAdmin = false;
   let isAdminLogin = false;
@@ -1279,6 +1329,7 @@
           document.getElementById("appMain").style.display="";
           document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user mr-1"></i>사용자';
           sessionStorage.setItem("on_loggedIn","user");
+          loadPcBarcodeMap();
         } else {
           document.getElementById("loginError").textContent=r.error||"비밀번호가 올바르지 않습니다.";
           document.getElementById("loginError").classList.remove("hidden");
@@ -1314,6 +1365,7 @@
     } else {
       document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user mr-1"></i>사용자';
     }
+    loadPcBarcodeMap();
   }
   const $ = (s)=>document.querySelector(s);
   const FIXED = { sku:"SKU코드", qty:"총출고수량", name:"sku상품명", attr:"SKU상품속성", market:"쇼핑몰", amount:"금액" };
@@ -1786,9 +1838,11 @@ async function smartDirectoryPicker() {
 
   // 서브탭 전환
   function switchPickView(view){
-    ["Basic","Detail","Tracking","Hapdan","Mobile"].forEach(v => {
-      document.getElementById("pickSub"+v).classList.toggle("active", v===view);
-      document.getElementById("pickView"+v).classList.toggle("hidden", v!==view);
+    ["Basic","Detail","Tracking","Hapdan","Mobile","Status"].forEach(v => {
+      const sub = document.getElementById("pickSub"+v);
+      const pv = document.getElementById("pickView"+v);
+      if (sub) sub.classList.toggle("active", v===view);
+      if (pv) pv.classList.toggle("hidden", v!==view);
     });
     // 모바일 뷰 벗어나면 스캐너 중지
     if (view !== "Mobile" && typeof mpStopScanner === 'function') mpStopScanner();
@@ -1969,6 +2023,201 @@ async function smartDirectoryPicker() {
     }
   };
 
+  // ═══ 피킹현황 ═══
+  let _pickStatusSession = null; // 현재 선택된 세션
+  let _pickStatusDetails = [];   // 현재 피킹 상세 데이터
+  let _pickStatusOrders = [];    // 현재 세션의 원본 주문 데이터
+
+  document.getElementById("btnPickingStatus").onclick = async () => {
+    // Status 뷰 표시
+    document.getElementById("pickingSubTabs").classList.remove("hidden");
+    switchPickView("Status");
+
+    const wrap = document.getElementById("pickStatusSessions");
+    const metaEl = document.getElementById("pickStatusMeta");
+    document.getElementById("pickStatusDetail").classList.add("hidden");
+    metaEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-2"></i>세션 조회 중...';
+
+    try {
+      const sessResult = await gasRun("serverGetUploadSessions", 7);
+      if (!sessResult || !sessResult.ok) {
+        metaEl.textContent = "세션 조회 실패";
+        return;
+      }
+      const sessions = sessResult.sessions || [];
+      if (!sessions.length) {
+        metaEl.textContent = "최근 7일간 업로드된 세션이 없습니다.";
+        wrap.innerHTML = '';
+        return;
+      }
+
+      metaEl.textContent = "피킹현황을 볼 세션을 선택하세요.";
+      let html = '';
+      for (const s of sessions) {
+        const ts = s.uploadTimestamp || '';
+        const dt = ts ? new Date(ts) : null;
+        const label = dt ? `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : ts.substring(0,16);
+        const pickedBadge = s.picked
+          ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 ml-2"><i class="fa-solid fa-check mr-1"></i>피킹완료</span>'
+          : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 ml-2"><i class="fa-solid fa-clock mr-1"></i>미피킹</span>';
+        html += `<button data-upload-ts="${ts}" class="ps-session-btn w-full text-left rounded-xl border ${s.picked ? 'border-emerald-200 bg-emerald-50/50' : 'border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100'} p-3 transition">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-slate-700">${label}</span>
+            <span class="text-sm text-slate-500">${s.count.toLocaleString()}건 ${pickedBadge}</span>
+          </div>
+          <div class="text-xs text-slate-400 mt-1">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
+        </button>`;
+      }
+      wrap.innerHTML = html;
+
+      // 세션 클릭 핸들러
+      wrap.querySelectorAll('.ps-session-btn').forEach(btn => {
+        btn.onclick = () => loadPickingStatus(btn.dataset.uploadTs);
+      });
+    } catch(e) {
+      metaEl.textContent = "서버 오류: " + e.message;
+    }
+  };
+
+  async function loadPickingStatus(uploadTs) {
+    _pickStatusSession = uploadTs;
+    const metaEl = document.getElementById("pickStatusMeta");
+    const detailEl = document.getElementById("pickStatusDetail");
+    metaEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-2"></i>피킹 상세 로드 중...';
+    detailEl.classList.add("hidden");
+
+    try {
+      // 주문 데이터와 피킹 상세를 병렬로 가져옴
+      const [orderResult, pickResult] = await Promise.all([
+        gasRun("serverGetOrdersByUploadSession", uploadTs),
+        gasRun("serverGetPickingDetail", uploadTs)
+      ]);
+
+      if (!orderResult || !orderResult.ok) {
+        metaEl.textContent = "주문 데이터 로드 실패";
+        return;
+      }
+
+      const allRows = orderResult.rows || [];
+      _pickStatusOrders = allRows;
+
+      // SKU별 target 집계
+      const skuTargetMap = new Map();
+      for (const r of allRows) {
+        const sku = r.sku || '';
+        const cur = skuTargetMap.get(sku) || { name: r.skuName||'', target: 0 };
+        cur.target += Number(r.qty) || 0;
+        skuTargetMap.set(sku, cur);
+      }
+
+      // 피킹 상세 매핑
+      const pickDetails = (pickResult && pickResult.details) || [];
+      const pickMap = new Map();
+      for (const d of pickDetails) {
+        pickMap.set(d.sku, { picked: d.picked || 0, hold: !!d.hold, updatedAt: d.updatedAt || '' });
+      }
+
+      // 통합 데이터 빌드
+      _pickStatusDetails = [];
+      let doneCnt = 0, partialCnt = 0, holdCnt = 0, noneCnt = 0;
+      for (const [sku, info] of skuTargetMap) {
+        const pick = pickMap.get(sku) || { picked: 0, hold: false, updatedAt: '' };
+        const status = pick.hold ? 'hold' : pick.picked >= info.target ? 'done' : pick.picked > 0 ? 'partial' : 'none';
+        if (status === 'done') doneCnt++;
+        else if (status === 'partial') partialCnt++;
+        else if (status === 'hold') holdCnt++;
+        else noneCnt++;
+        _pickStatusDetails.push({ sku, name: info.name, target: info.target, picked: pick.picked, hold: pick.hold, status, updatedAt: pick.updatedAt });
+      }
+
+      // 현황 업데이트
+      const dt = new Date(uploadTs);
+      const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      metaEl.innerHTML = `<span class="font-semibold text-indigo-600">${label}</span> · ${allRows.length}건 · SKU ${skuTargetMap.size}종 <button onclick="document.getElementById('btnPickingStatus').click()" class="text-xs text-slate-400 underline ml-2">← 세션 목록</button>`;
+
+      document.getElementById("psStatDone").textContent = doneCnt;
+      document.getElementById("psStatPartial").textContent = partialCnt;
+      document.getElementById("psStatHold").textContent = holdCnt;
+      document.getElementById("psStatNone").textContent = noneCnt;
+
+      // 테이블 렌더
+      renderPickStatusTable();
+      detailEl.classList.remove("hidden");
+
+    } catch(e) {
+      metaEl.textContent = "로드 실패: " + e.message;
+    }
+  }
+
+  function renderPickStatusTable() {
+    const tbl = document.getElementById("pickStatusTable");
+    const statusOrder = { hold: 0, partial: 1, none: 2, done: 3 };
+    const sorted = [..._pickStatusDetails].sort((a, b) => (statusOrder[a.status]||9) - (statusOrder[b.status]||9));
+
+    let html = '<thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left">상태</th><th class="px-4 py-3 text-left">SKU</th><th class="px-4 py-3 text-left">상품명</th><th class="px-4 py-3 text-center">목표</th><th class="px-4 py-3 text-center">피킹</th><th class="px-4 py-3 text-center">진행률</th></tr></thead><tbody>';
+
+    for (const d of sorted) {
+      const pct = d.target > 0 ? Math.round(d.picked / d.target * 100) : 0;
+      let badge = '', rowClass = '';
+      if (d.status === 'done') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">완료</span>'; rowClass = 'bg-emerald-50/30'; }
+      else if (d.status === 'partial') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">진행중</span>'; rowClass = 'bg-amber-50/30'; }
+      else if (d.status === 'hold') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">보류</span>'; rowClass = 'bg-red-50/30'; }
+      else { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">미피킹</span>'; }
+
+      html += `<tr class="${rowClass}">
+        <td class="px-4 py-2">${badge}</td>
+        <td class="px-4 py-2 font-mono text-sm">${d.sku}</td>
+        <td class="px-4 py-2 text-sm text-slate-600 max-w-[200px] truncate">${d.name}</td>
+        <td class="px-4 py-2 text-center">${d.target}</td>
+        <td class="px-4 py-2 text-center font-semibold ${d.picked >= d.target ? 'text-emerald-600' : d.picked > 0 ? 'text-amber-600' : 'text-slate-400'}">${d.picked}</td>
+        <td class="px-4 py-2 text-center">
+          <div class="flex items-center gap-2">
+            <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden"><div class="h-full ${d.status==='done' ? 'bg-emerald-400' : d.status==='hold' ? 'bg-red-400' : 'bg-amber-400'} rounded-full" style="width:${pct}%"></div></div>
+            <span class="text-xs text-slate-500 w-8">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody>';
+    tbl.innerHTML = html;
+  }
+
+  // 판매차감 연계: 피킹완료건만 / 전체 리스트
+  document.getElementById("btnPickedToEcount").onclick = () => sendPickStatusToEcount('picked');
+  document.getElementById("btnAllToEcount").onclick = () => sendPickStatusToEcount('all');
+
+  function sendPickStatusToEcount(mode) {
+    if (!_pickStatusSession || !_pickStatusOrders.length) return alert("피킹현황 데이터가 없습니다.");
+
+    // 피킹완료건만: done 상태 SKU의 주문만 필터
+    const doneSKUs = new Set(_pickStatusDetails.filter(d => d.status === 'done').map(d => d.sku));
+
+    let filteredRows;
+    if (mode === 'picked') {
+      if (!doneSKUs.size) return alert("피킹 완료된 SKU가 없습니다.");
+      filteredRows = _pickStatusOrders.filter(r => doneSKUs.has(r.sku));
+    } else {
+      filteredRows = _pickStatusOrders;
+    }
+
+    // rawRows 변환 (판매차감에서 사용)
+    headers = ["주문번호","SKU코드","sku상품명","총출고수량","쇼핑몰","금액","수령자명","SKU상품속성","운송장번호","파일날짜"];
+    rawRows = [headers];
+    for (const r of filteredRows) {
+      const ud = String(r.uploadDate||"");
+      const dateFormatted = ud.length===8 ? ud.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3") : ud;
+      rawRows.push([r.orderNo||"", r.sku||"", r.skuName||"", r.qty||0, r.market||"", r.amount||0, r.recipient||"", r.attr||"", r.trackingNo||"", dateFormatted]);
+    }
+
+    // 판매차감 탭으로 전환
+    activateTab("EcountApi");
+
+    const label = mode === 'picked'
+      ? `피킹완료건만 (${doneSKUs.size}종 · ${filteredRows.length}건)`
+      : `전체 리스트 (${filteredRows.length}건)`;
+    ecountSetStatus("fa-solid fa-circle-info text-indigo-400", `피킹현황에서 로드: ${label}`, "담당자/날짜 입력 후 [미리보기] → [선택 전송]");
+  }
+
   // ═══ 기본 뷰 빌드 ═══
   function buildBasicView(expanded){
     const aggMap = new Map(); let totalQty = 0;
@@ -2065,11 +2314,11 @@ async function smartDirectoryPicker() {
         }
       }
       var happoRows = Array.from(happoAgg.entries())
-        .map(function(e){ return [e[0], e[1].name, e[1].qty, e[1].rack]; })
+        .map(function(e){ var bc = (_pcSkuInfo[e[0]]||{}).barcode||''; return [e[0], e[1].name, e[1].qty, bc, e[1].rack]; })
         .sort(function(a,b){ return b[2]-a[2]; });
       var hw = document.createElement("div"); hw.className = "overflow-x-auto rounded-2xl border border-slate-100";
       var ht = document.createElement("table"); ht.className = "table w-full text-sm";
-      renderTable(ht, ["SKU","상품명","총 수량","랙위치"], happoRows);
+      renderTable(ht, ["SKU","상품명","총 수량","바코드","랙위치"], happoRows);
       hw.appendChild(ht); happoEl.appendChild(hw);
     }
 
@@ -2082,10 +2331,10 @@ async function smartDirectoryPicker() {
       dapoEl.appendChild(hdr);
       const agg = new Map();
       for (const d of dapo){ const c = agg.get(d.sku)||{name:"",qty:0,orders:0,rack:""}; agg.set(d.sku,{name:c.name||d.name,qty:c.qty+d.qty,orders:c.orders+1,rack:c.rack||d.rack}); }
-      const rows = Array.from(agg.entries()).map(([sku,v])=>[sku,v.name,v.qty,`${v.orders}건`,v.rack]).sort((a,b)=>b[2]-a[2]);
+      const rows = Array.from(agg.entries()).map(([sku,v])=>{ var bc=(_pcSkuInfo[sku]||{}).barcode||''; return [sku,v.name,v.qty,`${v.orders}건`,bc,v.rack]; }).sort((a,b)=>b[2]-a[2]);
       const w = document.createElement("div"); w.className = "overflow-x-auto rounded-2xl border border-slate-100";
       const t = document.createElement("table"); t.className = "table w-full text-sm";
-      renderTable(t, ["SKU","상품명","총 수량","주문건수","랙위치"], rows);
+      renderTable(t, ["SKU","상품명","총 수량","주문건수","바코드","랙위치"], rows);
       w.appendChild(t); dapoEl.appendChild(w);
     }
 
@@ -2098,10 +2347,10 @@ async function smartDirectoryPicker() {
       danpoEl.appendChild(hdr);
       const agg = new Map();
       for (const d of danpo){ const c = agg.get(d.sku)||{name:"",orders:0,rack:""}; agg.set(d.sku,{name:c.name||d.name,orders:c.orders+1,rack:c.rack||d.rack}); }
-      const rows = Array.from(agg.entries()).map(([sku,v])=>[sku,v.name,v.orders,v.rack]).sort((a,b)=>b[2]-a[2]);
+      const rows = Array.from(agg.entries()).map(([sku,v])=>{ var bc=(_pcSkuInfo[sku]||{}).barcode||''; return [sku,v.name,v.orders,bc,v.rack]; }).sort((a,b)=>b[2]-a[2]);
       const w = document.createElement("div"); w.className = "overflow-x-auto rounded-2xl border border-slate-100";
       const t = document.createElement("table"); t.className = "table w-full text-sm";
-      renderTable(t, ["SKU","상품명","주문건수(=수량)","랙위치"], rows);
+      renderTable(t, ["SKU","상품명","주문건수(=수량)","바코드","랙위치"], rows);
       w.appendChild(t); danpoEl.appendChild(w);
     }
 
@@ -3764,6 +4013,8 @@ async function smartDirectoryPicker() {
     serverGetConsignLog:'getConsignLog', serverAdminLogin:'adminLogin',
     serverCheckPassword:'checkPassword', serverGetOrdersFullBatch:'getOrdersFullBatch',
     serverGetTodaySummary:'getTodaySummary',
+    getBarcodeMap:'getBarcodeMap',
+    serverGetPickingDetail:'getPickingDetail', serverSavePickingDetail:'savePickingDetail',
   };
   const _fnArgMap = {
     serverUploadOrders:['rows','uploadedBy'], serverGetUploadSessions:['days'],
@@ -3779,6 +4030,7 @@ async function smartDirectoryPicker() {
     serverGetOrdersFullBatch:['dateFrom','dateTo','offset','limit'],
     serverRollbackUpload:['uploadTimestamp'], serverRollbackEcountLog:['sentTimestamp'],
     serverLogEcountSend:['date','seqNo','count','sentBy','items'],
+    serverGetPickingDetail:['uploadTimestamp'], serverSavePickingDetail:['uploadTimestamp','details'],
   };
   async function gasRun(fnName, ...args) {
     const action = _fnActionMap[fnName] || fnName;
