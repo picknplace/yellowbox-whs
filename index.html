@@ -4078,6 +4078,7 @@ async function smartDirectoryPicker() {
     serverRollbackUpload:['uploadTimestamp'], serverRollbackEcountLog:['sentTimestamp'],
     serverLogEcountSend:['date','seqNo','count','sentBy','items'],
     serverGetPickingDetail:['uploadTimestamp'], serverSavePickingDetail:['uploadTimestamp','details'],
+    serverEcountGetInventory:['baseDate','whCode','skuList'],
   };
   async function gasRun(fnName, ...args) {
     const action = _fnActionMap[fnName] || fnName;
@@ -4126,6 +4127,8 @@ async function smartDirectoryPicker() {
       const recipient = idxRecipient>=0 ? String(row[idxRecipient]??"").trim() : "";
       const parts = expandMultiSKURow(row, idxSku, idxName, idxQty);
       for (const [sku, name, qty] of parts){
+        // 사은품 SKU 제외 (S+8자리이상 영숫자)
+        if (/^S[A-Za-z0-9]{8,}$/.test(sku)) continue;
         saleList.push({
           SaleDate: yyyymmdd,
           CustCode: "",
