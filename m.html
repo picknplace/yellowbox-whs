@@ -621,6 +621,7 @@ function rollbackSku(sku) {
   if (!skuMap.has(sku)) return;
   const info = skuMap.get(sku);
   info.picked = 0;
+  _pickingSaved = false; // 완료 상태 리셋
   speak('피킹 취소');
   renderSkuList();
   updateStats();
@@ -1004,13 +1005,19 @@ function updateStats() {
   const rb = document.getElementById('pickRateBadge');
   if (rb) rb.textContent = pct + '%';
 
-  // 모든 SKU 완료 시 피킹 이력 저장
-  if (done === total && total > 0 && !_pickingSaved && currentSession) {
+  // 모든 SKU 완료 시 피킹 이력 저장 (보류 건 없고, 모든 수량 스캔 완료)
+  let allQtyDone = true;
+  let hasHold = false;
+  let totalQty = 0, pickedQty = 0;
+  for (const [, info] of skuMap) {
+    totalQty += info.target;
+    pickedQty += info.picked;
+    if (info.picked < info.target) allQtyDone = false;
+    if (info.hold) hasHold = true;
+  }
+  if (allQtyDone && !hasHold && total > 0 && !_pickingSaved && currentSession) {
     _pickingSaved = true;
-    let totalQty = 0;
-    for (const [, info] of skuMap) totalQty += info.target;
     api('savePickingLog', { uploadTimestamp: currentSession, rowCount: totalQty, pickedBy: 'mobile_user' }).catch(()=>{});
-    speak('피킹 완료');
   }
 }
 
