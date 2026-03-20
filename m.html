@@ -386,17 +386,7 @@ function savePickingProgress() {
 
   // 서버 저장 (PC 공유용, 디바운스 1초)
   clearTimeout(window._saveDetailTimer);
-  window._saveDetailTimer = setTimeout(() => {
-    const details = [];
-    for (const [sku, info] of skuMap) {
-      details.push({ sku, skuName: info.name, target: info.target, picked: info.picked, hold: !!info.hold });
-    }
-    const ts = currentSession;
-    console.log('[피킹저장] 서버 전송 시작:', ts, details.length + '종');
-    api('savePickingDetail', { uploadTimestamp: ts, details })
-      .then(r => console.log('[피킹저장] 서버 응답:', JSON.stringify(r)))
-      .catch(e => console.warn('[피킹저장] 서버 저장 실패:', e));
-  }, 1000);
+  window._saveDetailTimer = setTimeout(() => flushPickingToServer(), 1000);
 }
 async function restorePickingProgress(ts) {
   // 1) 서버에서 먼저 시도
@@ -687,15 +677,34 @@ function quickComplete(sku) {
 
 function flushPickingToServer() {
   if (!currentSession || !skuMap.size) return;
-  clearTimeout(window._saveDetailTimer); // 디바운스 취소
+  clearTimeout(window._saveDetailTimer);
   const details = [];
   for (const [sku, info] of skuMap) {
     details.push({ sku, skuName: info.name, target: info.target, picked: info.picked, hold: !!info.hold });
   }
-  console.log('[피킹저장] 즉시 전송:', currentSession, details.length + '종');
-  api('savePickingDetail', { uploadTimestamp: currentSession, details })
-    .then(r => console.log('[피킹저장] 즉시 응답:', JSON.stringify(r)))
-    .catch(e => console.warn('[피킹저장] 즉시 저장 실패:', e));
+  const ts = currentSession;
+  console.log('[피킹저장] 전송:', ts, details.length + '종');
+
+  // 화면에 저장 상태 표시
+  const el = document.getElementById('lastScanResult');
+  el.classList.remove('hidden');
+  el.innerHTML = '<div class="text-xs text-slate-400 text-center py-1"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>서버 저장 중...</div>';
+
+  api('savePickingDetail', { uploadTimestamp: ts, details })
+    .then(r => {
+      console.log('[피킹저장] 응답:', JSON.stringify(r));
+      if (r && r.ok) {
+        el.innerHTML = '<div class="text-xs text-emerald-500 text-center py-1"><i class="fa-solid fa-check mr-1"></i>서버 저장 완료 (' + details.length + '종)</div>';
+      } else {
+        el.innerHTML = '<div class="text-xs text-red-500 text-center py-1"><i class="fa-solid fa-xmark mr-1"></i>저장 실패: ' + (r ? r.error : '응답없음') + '</div>';
+      }
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    })
+    .catch(e => {
+      console.warn('[피킹저장] 실패:', e);
+      el.innerHTML = '<div class="text-xs text-red-500 text-center py-1"><i class="fa-solid fa-xmark mr-1"></i>저장 실패: ' + e.message + '</div>';
+      setTimeout(() => el.classList.add('hidden'), 5000);
+    });
 }
 
 // ── 강제 피킹완료 ──
