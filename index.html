@@ -2009,7 +2009,7 @@ async function smartDirectoryPicker() {
 
     const wrap = document.getElementById("pickStatusSessions");
     const metaEl = document.getElementById("pickStatusMeta");
-    document.getElementById("pickStatusDetail").classList.add("hidden");
+    wrap.classList.remove("hidden");
     metaEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-2"></i>세션 조회 중...';
 
     try {
