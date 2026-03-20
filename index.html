@@ -469,33 +469,7 @@
         <div id="pickViewStatus" class="hidden">
           <div id="pickStatusMeta" class="text-sm text-slate-400 mb-4"></div>
           <div id="pickStatusSessions" class="space-y-2 mb-4"></div>
-          <div id="pickStatusDetail" class="hidden">
-            <div id="pickStatusSummary" class="grid grid-cols-4 gap-2 mb-4">
-              <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
-                <div class="text-[10px] text-emerald-500 font-semibold">완료</div>
-                <div id="psStatDone" class="text-xl font-bold text-emerald-600">0</div>
-              </div>
-              <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
-                <div class="text-[10px] text-amber-500 font-semibold">진행중</div>
-                <div id="psStatPartial" class="text-xl font-bold text-amber-600">0</div>
-              </div>
-              <div class="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
-                <div class="text-[10px] text-red-500 font-semibold">보류</div>
-                <div id="psStatHold" class="text-xl font-bold text-red-600">0</div>
-              </div>
-              <div class="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
-                <div class="text-[10px] text-slate-500 font-semibold">미피킹</div>
-                <div id="psStatNone" class="text-xl font-bold text-slate-600">0</div>
-              </div>
-            </div>
-            <div class="flex gap-2 mb-4">
-              <button id="btnPickedToEcount" class="px-4 py-2.5 rounded-xl bg-orange-500 text-white text-sm font-semibold hover:bg-orange-600 transition shadow-sm"><i class="fa-solid fa-file-export mr-2"></i>피킹완료건만 판매차감</button>
-              <button id="btnAllToEcount" class="px-4 py-2.5 rounded-xl bg-slate-500 text-white text-sm font-semibold hover:bg-slate-600 transition shadow-sm"><i class="fa-solid fa-file-export mr-2"></i>전체 리스트 판매차감</button>
-            </div>
-            <div class="overflow-x-auto rounded-2xl border border-slate-100">
-              <table id="pickStatusTable" class="table w-full text-sm"></table>
-            </div>
-          </div>
+          <!-- 피킹 상세는 각 세션 버튼 아래 인라인으로 표시됨 -->
         </div>
       </div>
     </div>
@@ -2062,12 +2036,14 @@ async function smartDirectoryPicker() {
         const pickedBadge = s.picked
           ? '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 ml-2"><i class="fa-solid fa-check mr-1"></i>피킹완료</span>'
           : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 ml-2"><i class="fa-solid fa-clock mr-1"></i>미피킹</span>';
-        html += `<button data-upload-ts="${ts}" class="ps-session-btn w-full text-left rounded-xl border ${s.picked ? 'border-emerald-200 bg-emerald-50/50' : 'border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100'} p-3 transition">
+        const safeId = ts.replace(/[^a-zA-Z0-9]/g,'_');
+        html += `<div>
+        <button data-upload-ts="${ts}" class="ps-session-btn w-full text-left rounded-xl border ${s.picked ? 'border-emerald-200 bg-emerald-50/50' : 'border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100'} p-3 transition">
           <div class="flex items-center justify-between">
             <span class="font-semibold text-slate-700">${label}</span>
             <span class="text-sm text-slate-500">${s.count.toLocaleString()}건 ${pickedBadge}</span>
           </div>
-          <div id="psProgress_${ts.replace(/[^a-zA-Z0-9]/g,'_')}" class="mt-2 hidden">
+          <div id="psProgress_${safeId}" class="mt-2 hidden">
             <div class="flex items-center gap-2">
               <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden"><div class="psProgressInner h-full bg-emerald-400 rounded-full transition-all" style="width:0%"></div></div>
               <span class="psProgressText text-xs text-slate-500">조회중...</span>
@@ -2075,7 +2051,9 @@ async function smartDirectoryPicker() {
             <div class="psProgressDetail flex gap-2 mt-1 text-xs"></div>
           </div>
           <div class="text-xs text-slate-400 mt-1">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
-        </button>`;
+        </button>
+        <div id="psInline_${safeId}" class="hidden mt-1 mb-3 rounded-xl border border-slate-200 bg-white p-4"></div>
+        </div>`;
       }
       wrap.innerHTML = html;
 
@@ -2151,23 +2129,31 @@ async function smartDirectoryPicker() {
 
   async function loadPickingStatus(uploadTs) {
     _pickStatusSession = uploadTs;
-    const metaEl = document.getElementById("pickStatusMeta");
-    const detailEl = document.getElementById("pickStatusDetail");
-    const sessWrap = document.getElementById("pickStatusSessions");
-    // 세션 목록 숨기고 상세 자리에 표시
-    sessWrap.classList.add("hidden");
-    metaEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-2"></i>피킹 상세 로드 중...';
-    detailEl.classList.add("hidden");
+    const safeId = uploadTs.replace(/[^a-zA-Z0-9]/g,'_');
+    const inlineEl = document.getElementById('psInline_' + safeId);
+
+    // 다른 세션의 인라인 상세 닫기
+    document.querySelectorAll('[id^="psInline_"]').forEach(el => {
+      if (el.id !== 'psInline_' + safeId) el.classList.add('hidden');
+    });
+
+    // 토글: 이미 열려있으면 닫기
+    if (!inlineEl.classList.contains('hidden') && inlineEl.dataset.loaded) {
+      inlineEl.classList.add('hidden');
+      return;
+    }
+
+    inlineEl.classList.remove('hidden');
+    inlineEl.innerHTML = '<div class="text-center py-4 text-sm text-slate-400"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>피킹 상세 로드 중...</div>';
 
     try {
-      // 주문 데이터와 피킹 상세를 병렬로 가져옴
       const [orderResult, pickResult] = await Promise.all([
         gasRun("serverGetOrdersByUploadSession", uploadTs),
         gasRun("serverGetPickingDetail", uploadTs)
       ]);
 
       if (!orderResult || !orderResult.ok) {
-        metaEl.textContent = "주문 데이터 로드 실패";
+        inlineEl.innerHTML = '<div class="text-sm text-red-400">주문 데이터 로드 실패</div>';
         return;
       }
 
@@ -2203,62 +2189,41 @@ async function smartDirectoryPicker() {
         _pickStatusDetails.push({ sku, name: info.name, target: info.target, picked: pick.picked, hold: pick.hold, status, updatedAt: pick.updatedAt });
       }
 
-      // 현황 업데이트
-      const dt = new Date(uploadTs);
-      const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-      metaEl.innerHTML = `<span class="font-semibold text-indigo-600">${label}</span> · ${allRows.length}건 · SKU ${skuTargetMap.size}종 <button onclick="document.getElementById('pickStatusSessions').classList.remove('hidden');document.getElementById('pickStatusDetail').classList.add('hidden');document.getElementById('pickStatusMeta').textContent='피킹현황을 볼 세션을 선택하세요.';" class="text-xs text-slate-400 underline ml-2">← 세션 목록</button>`;
+      // 인라인 렌더
+      let html = `<div class="grid grid-cols-4 gap-2 mb-3">
+        <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-center"><div class="text-[10px] text-emerald-500 font-semibold">완료</div><div class="text-lg font-bold text-emerald-600">${doneCnt}</div></div>
+        <div class="rounded-lg bg-amber-50 border border-amber-200 p-2 text-center"><div class="text-[10px] text-amber-500 font-semibold">진행중</div><div class="text-lg font-bold text-amber-600">${partialCnt}</div></div>
+        <div class="rounded-lg bg-red-50 border border-red-200 p-2 text-center"><div class="text-[10px] text-red-500 font-semibold">보류</div><div class="text-lg font-bold text-red-600">${holdCnt}</div></div>
+        <div class="rounded-lg bg-slate-50 border border-slate-200 p-2 text-center"><div class="text-[10px] text-slate-500 font-semibold">미피킹</div><div class="text-lg font-bold text-slate-600">${noneCnt}</div></div>
+      </div>
+      <div class="flex gap-2 mb-3">
+        <button onclick="sendPickStatusToEcount('picked')" class="px-3 py-2 rounded-lg bg-orange-500 text-white text-xs font-semibold hover:bg-orange-600 transition"><i class="fa-solid fa-file-export mr-1"></i>피킹완료건만 판매차감</button>
+        <button onclick="sendPickStatusToEcount('all')" class="px-3 py-2 rounded-lg bg-slate-500 text-white text-xs font-semibold hover:bg-slate-600 transition"><i class="fa-solid fa-file-export mr-1"></i>전체 리스트 판매차감</button>
+      </div>`;
 
-      document.getElementById("psStatDone").textContent = doneCnt;
-      document.getElementById("psStatPartial").textContent = partialCnt;
-      document.getElementById("psStatHold").textContent = holdCnt;
-      document.getElementById("psStatNone").textContent = noneCnt;
-
-      // 테이블 렌더
-      renderPickStatusTable();
-      detailEl.classList.remove("hidden");
+      // 테이블
+      const statusOrder = { hold: 0, partial: 1, none: 2, done: 3 };
+      const sorted = [..._pickStatusDetails].sort((a, b) => (statusOrder[a.status]||9) - (statusOrder[b.status]||9));
+      html += '<div class="overflow-x-auto rounded-xl border border-slate-100"><table class="table w-full text-sm"><thead class="bg-slate-50"><tr><th class="px-3 py-2 text-left">상태</th><th class="px-3 py-2 text-left">SKU</th><th class="px-3 py-2 text-left">상품명</th><th class="px-3 py-2 text-center">목표</th><th class="px-3 py-2 text-center">피킹</th><th class="px-3 py-2 text-center">진행률</th></tr></thead><tbody>';
+      for (const d of sorted) {
+        const pct = d.target > 0 ? Math.round(d.picked / d.target * 100) : 0;
+        let badge = '', rowClass = '';
+        if (d.status === 'done') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">완료</span>'; rowClass = 'bg-emerald-50/30'; }
+        else if (d.status === 'partial') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">진행중</span>'; rowClass = 'bg-amber-50/30'; }
+        else if (d.status === 'hold') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">보류</span>'; rowClass = 'bg-red-50/30'; }
+        else { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">미피킹</span>'; }
+        html += `<tr class="${rowClass}"><td class="px-3 py-1.5">${badge}</td><td class="px-3 py-1.5 font-mono text-xs">${d.sku}</td><td class="px-3 py-1.5 text-xs text-slate-600 max-w-[200px] truncate">${d.name}</td><td class="px-3 py-1.5 text-center">${d.target}</td><td class="px-3 py-1.5 text-center font-semibold ${d.picked >= d.target ? 'text-emerald-600' : d.picked > 0 ? 'text-amber-600' : 'text-slate-400'}">${d.picked}</td><td class="px-3 py-1.5"><div class="flex items-center gap-1"><div class="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full ${d.status==='done' ? 'bg-emerald-400' : d.status==='hold' ? 'bg-red-400' : 'bg-amber-400'} rounded-full" style="width:${pct}%"></div></div><span class="text-[10px] text-slate-400 w-7">${pct}%</span></div></td></tr>`;
+      }
+      html += '</tbody></table></div>';
+      inlineEl.innerHTML = html;
+      inlineEl.dataset.loaded = '1';
 
     } catch(e) {
-      metaEl.textContent = "로드 실패: " + e.message;
+      inlineEl.innerHTML = `<div class="text-sm text-red-400">로드 실패: ${e.message}</div>`;
     }
-  }
-
-  function renderPickStatusTable() {
-    const tbl = document.getElementById("pickStatusTable");
-    const statusOrder = { hold: 0, partial: 1, none: 2, done: 3 };
-    const sorted = [..._pickStatusDetails].sort((a, b) => (statusOrder[a.status]||9) - (statusOrder[b.status]||9));
-
-    let html = '<thead class="bg-slate-50"><tr><th class="px-4 py-3 text-left">상태</th><th class="px-4 py-3 text-left">SKU</th><th class="px-4 py-3 text-left">상품명</th><th class="px-4 py-3 text-center">목표</th><th class="px-4 py-3 text-center">피킹</th><th class="px-4 py-3 text-center">진행률</th></tr></thead><tbody>';
-
-    for (const d of sorted) {
-      const pct = d.target > 0 ? Math.round(d.picked / d.target * 100) : 0;
-      let badge = '', rowClass = '';
-      if (d.status === 'done') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">완료</span>'; rowClass = 'bg-emerald-50/30'; }
-      else if (d.status === 'partial') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">진행중</span>'; rowClass = 'bg-amber-50/30'; }
-      else if (d.status === 'hold') { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">보류</span>'; rowClass = 'bg-red-50/30'; }
-      else { badge = '<span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500">미피킹</span>'; }
-
-      html += `<tr class="${rowClass}">
-        <td class="px-4 py-2">${badge}</td>
-        <td class="px-4 py-2 font-mono text-sm">${d.sku}</td>
-        <td class="px-4 py-2 text-sm text-slate-600 max-w-[200px] truncate">${d.name}</td>
-        <td class="px-4 py-2 text-center">${d.target}</td>
-        <td class="px-4 py-2 text-center font-semibold ${d.picked >= d.target ? 'text-emerald-600' : d.picked > 0 ? 'text-amber-600' : 'text-slate-400'}">${d.picked}</td>
-        <td class="px-4 py-2 text-center">
-          <div class="flex items-center gap-2">
-            <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden"><div class="h-full ${d.status==='done' ? 'bg-emerald-400' : d.status==='hold' ? 'bg-red-400' : 'bg-amber-400'} rounded-full" style="width:${pct}%"></div></div>
-            <span class="text-xs text-slate-500 w-8">${pct}%</span>
-          </div>
-        </td>
-      </tr>`;
-    }
-    html += '</tbody>';
-    tbl.innerHTML = html;
   }
 
   // 판매차감 연계: 피킹완료건만 / 전체 리스트
-  document.getElementById("btnPickedToEcount").onclick = () => sendPickStatusToEcount('picked');
-  document.getElementById("btnAllToEcount").onclick = () => sendPickStatusToEcount('all');
-
   function sendPickStatusToEcount(mode) {
     if (!_pickStatusSession || !_pickStatusOrders.length) return alert("피킹현황 데이터가 없습니다.");
 
