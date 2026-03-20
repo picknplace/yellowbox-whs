@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>🍊 Delluga WHS Mobile</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍊</text></svg>">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -14,7 +17,9 @@
     body { font-family: -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif; background: #f5f7fa; margin: 0; padding: 0; }
     .tab-active { background: #4f46e5; color: white; }
     .tab-inactive { background: #e2e8f0; color: #64748b; }
-    .scan-line { position:absolute; top:50%; left:5%; right:5%; height:4px; background:rgba(239,68,68,0.85); transform:translateY(-50%); pointer-events:none; animation: scanPulse 1.5s ease-in-out infinite; box-shadow: 0 0 8px rgba(239,68,68,0.5), 0 0 20px rgba(239,68,68,0.2); }
+    .scan-box { position:absolute; top:20%; left:5%; width:90%; height:60%; border:2px solid rgba(239,68,68,0.85); border-radius:8px; pointer-events:none; box-shadow: 0 0 10px rgba(239,68,68,0.4), 0 0 0 9999px rgba(0,0,0,0.4); z-index:10; }
+    #scannerViewport, #scannerViewport > .viewport { overflow:hidden !important; width:100% !important; height:280px !important; position:relative !important; }
+    #scannerViewport video, #scannerViewport canvas, #scannerViewport .drawingBuffer { position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:280px !important; max-height:280px !important; object-fit:cover !important; }
     @keyframes scanPulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
     .sku-done { border-left: 4px solid #10b981; }
     .sku-partial { border-left: 4px solid #f59e0b; }
@@ -108,24 +113,27 @@
 
     <!-- 바코드 스캐너 -->
     <div id="scannerArea" class="hidden mb-3">
-      <div class="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 overflow-hidden relative">
+      <div class="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 overflow-hidden">
         <div id="scannerViewport" style="width:100%; height:280px; background:#111; position:relative;">
-          <div class="scan-line"></div>
+          <div class="scan-box"></div>
         </div>
-        <div class="flex justify-center gap-2 py-2.5">
-          <button id="btnStartScan" class="px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600" onclick="startScanner()">
-            <i class="fa-solid fa-barcode mr-1"></i>스캔
-          </button>
-          <button id="btnStopScan" class="px-4 py-2 rounded-xl bg-slate-400 text-white text-sm font-semibold hidden" onclick="stopScanner()">
-            <i class="fa-solid fa-stop mr-1"></i>중지
-          </button>
-          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="photoScan()">
-            <i class="fa-solid fa-camera mr-1"></i>촬영
-          </button>
-          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="manualInput()">
-            <i class="fa-solid fa-keyboard mr-1"></i>입력
-          </button>
-        </div>
+      </div>
+      <div class="flex justify-center gap-2 py-2.5">
+        <button id="btnStartScan" class="px-6 py-3 rounded-xl bg-indigo-500 text-white text-base font-bold active:bg-indigo-600 shadow-lg" onclick="startScanner()">
+          <i class="fa-solid fa-barcode mr-1"></i>터치하여 스캔 시작
+        </button>
+        <button id="btnStopScan" class="px-4 py-2 rounded-xl bg-slate-400 text-white text-sm font-semibold hidden" onclick="stopScanner()">
+          <i class="fa-solid fa-stop mr-1"></i>중지
+        </button>
+        <button id="btnSnapScan" class="px-4 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold hidden active:bg-emerald-600" onclick="snapScan()">
+          <i class="fa-solid fa-crosshairs mr-1"></i>즉시스캔
+        </button>
+        <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="photoScan()">
+          <i class="fa-solid fa-camera mr-1"></i>촬영
+        </button>
+        <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="manualInput()">
+          <i class="fa-solid fa-keyboard mr-1"></i>입력
+        </button>
       </div>
     </div>
 
@@ -149,6 +157,8 @@
 
     <!-- SKU 리스트 -->
     <div id="skuList" class="space-y-1.5 max-h-[45vh] overflow-y-auto"></div>
+
+    <!-- 전체 피킹완료 (하단 제거, SKU별 완료버튼으로 대체) -->
   </div>
 
   <!-- 업로드 탭 -->
@@ -203,6 +213,7 @@ async function api(action, params = {}) {
 let sessions = [];
 let currentSession = null;
 let skuMap = new Map(); // sku → { name, target, picked, rack }
+let barcodeToSku = new Map(); // barcode → sku (바코드→SKU 매핑)
 let scannerRunning = false;
 let imageCache = {};
 
@@ -217,6 +228,7 @@ document.getElementById('btnLogin').onclick = async () => {
       document.getElementById('appMain').classList.remove('hidden');
       sessionStorage.setItem('whs_login', '1');
       loadSessions();
+      loadBarcodeMap();
     } else {
       showLoginError(r.error || '비밀번호가 올바르지 않습니다.');
     }
@@ -234,6 +246,7 @@ if (sessionStorage.getItem('whs_login')) {
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('appMain').classList.remove('hidden');
   loadSessions();
+  loadBarcodeMap();
 }
 
 document.getElementById('btnLogout').onclick = () => {
@@ -301,16 +314,37 @@ async function selectSession(ts) {
       return;
     }
 
-    // SKU 집계
+    // SKU 집계 + 주문번호별 SKU수 카운트 (합포 판별)
+    const orderSkuCount = {}; // orderNo → Set of skus
     for (const row of r.rows) {
       if (!row || typeof row !== 'object') continue;
       const sku = String(row.sku || '').trim();
       if (!sku) continue;
+      const orderNo = String(row.orderNo || '');
+      if (!orderSkuCount[orderNo]) orderSkuCount[orderNo] = new Set();
+      orderSkuCount[orderNo].add(sku);
+      // 바코드맵에서 바코드/이미지 가져오기
+      const si = skuInfoMap[sku] || {};
+      // attr에서 WMS 랙위치 파싱 (예: "사이즈:217,WMS:B5" → "B5")
+      let rack = '';
+      const attrStr = String(row.attr || '');
+      const wmsMatch = attrStr.match(/WMS[=:]([^\s,\n]+)/i);
+      if (wmsMatch) rack = wmsMatch[1];
       if (skuMap.has(sku)) {
-        skuMap.get(sku).target += Number(row.qty) || 0;
+        const existing = skuMap.get(sku);
+        existing.target += Number(row.qty) || 0;
+        if (!existing.rack && rack) existing.rack = rack;
       } else {
-        skuMap.set(sku, { name: row.skuName || '', target: Number(row.qty) || 0, picked: 0, imgUrl: null });
+        skuMap.set(sku, { name: row.skuName || '', target: Number(row.qty) || 0, picked: 0, imgUrl: si.imageUrl || null, barcode: si.barcode || '', rack: rack });
       }
+    }
+    // 합포 판별: SKU가 2종 이상인 주문이 있으면 합포, 또는 수량 > 1이면 합포
+    const multiSkuOrders = new Set();
+    for (const [orderNo, skus] of Object.entries(orderSkuCount)) {
+      if (skus.size > 1) skus.forEach(s => multiSkuOrders.add(s));
+    }
+    for (const [sku, info] of skuMap) {
+      info.isMulti = multiSkuOrders.has(sku) || info.target > 1;
     }
 
     // UI 업데이트
@@ -318,18 +352,24 @@ async function selectSession(ts) {
     const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
     document.getElementById('sessionPicker').innerHTML =
       `<div class="flex items-center justify-between">
-        <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-boxes-stacked mr-1"></i>${label} · ${r.rows.length}건 · SKU ${skuMap.size}종</div>
+        <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-boxes-stacked mr-1"></i>${label} · ${r.rows.length}건 · SKU ${skuMap.size}종 · <span id="pickRateBadge">0%</span></div>
         <button onclick="resetPicking()" class="text-xs text-slate-400 underline">← 목록</button>
       </div>`;
 
     document.getElementById('pickingStats').classList.remove('hidden');
     document.getElementById('progressWrap').classList.remove('hidden');
     document.getElementById('scannerArea').classList.remove('hidden');
+    // forceCompleteWrap removed - SKU별 완료버튼으로 대체
+
+    // 저장된 피킹 진행상황 복원
+    restorePickingProgress(ts);
 
     // 이미지 로드
     loadSkuImages();
     renderSkuList();
     updateStats();
+
+    // 카메라는 사용자 터치 필요 (브라우저 보안정책)
 
     // 피킹 이력은 모든 SKU 스캔 완료 시 저장 (updateStats에서 체크)
   } catch(e) {
@@ -337,14 +377,36 @@ async function selectSession(ts) {
   }
 }
 
+let _imageAskedSkus = new Set(); // 이미지 등록 여부 물어본 SKU (세션당 1회)
+
+// ── 피킹 진행상황 저장/복원 ──
+function savePickingProgress() {
+  if (!currentSession || !skuMap.size) return;
+  const data = {};
+  for (const [sku, info] of skuMap) { if (info.picked > 0) data[sku] = info.picked; }
+  sessionStorage.setItem('picking_' + currentSession, JSON.stringify(data));
+}
+function restorePickingProgress(ts) {
+  try {
+    const saved = sessionStorage.getItem('picking_' + ts);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    for (const [sku, picked] of Object.entries(data)) {
+      if (skuMap.has(sku)) skuMap.get(sku).picked = Math.min(picked, skuMap.get(sku).target);
+    }
+  } catch(e) {}
+}
+
 function resetPicking() {
   currentSession = null;
   skuMap.clear();
   _pickingSaved = false;
+  _imageAskedSkus.clear();
   document.getElementById('pickingStats').classList.add('hidden');
   document.getElementById('progressWrap').classList.add('hidden');
   document.getElementById('scannerArea').classList.add('hidden');
   document.getElementById('lastScanResult').classList.add('hidden');
+  // forceCompleteWrap removed
   document.getElementById('skuList').innerHTML = '';
   document.getElementById('sessionPicker').innerHTML =
     '<div class="flex items-center justify-between mb-2"><span class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-list mr-1"></i>업로드 세션</span><button class="text-xs text-indigo-500 font-semibold" onclick="loadSessions()"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button></div><div id="sessionList" class="space-y-2 max-h-[35vh] overflow-y-auto"></div>';
@@ -386,7 +448,7 @@ function speak(text) {
     if ('speechSynthesis' in window) {
       speechSynthesis.cancel(); // 이전 발화 취소 (겹침 방지)
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ko-KR'; u.rate = 1.3; u.volume = 1;
+      u.lang = 'ko-KR'; u.rate = 1.125; u.volume = 1;
       speechSynthesis.speak(u);
     }
   } catch(e) {}
@@ -398,16 +460,45 @@ document.addEventListener('click', function _initAudio() {
   document.removeEventListener('click', _initAudio);
 }, { once: true });
 
+// ── 바코드 매핑 로드 ──
+let skuInfoMap = {}; // sku → { barcode, imageUrl } (바코드맵 전체 정보)
+async function loadBarcodeMap() {
+  try {
+    const r = await api('getBarcodeMap');
+    if (r.ok && r.data) {
+      barcodeToSku.clear();
+      skuInfoMap = {};
+      for (const item of r.data) {
+        const sku = String(item.sku || '').trim();
+        if (!sku) continue;
+        skuInfoMap[sku] = { barcode: String(item.barcode || ''), imageUrl: String(item.imageUrl || '') };
+        if (item.barcode) {
+          barcodeToSku.set(String(item.barcode).trim().toUpperCase(), sku);
+        }
+      }
+      console.log('바코드 매핑:', barcodeToSku.size, '건, SKU정보:', Object.keys(skuInfoMap).length, '건');
+    }
+  } catch(e) { console.warn('바코드 매핑 로드 실패:', e); }
+}
+
 // ── 스캔/피킹 ──
 function handleScan(code) {
   if (!code || !skuMap.size) return;
-  const sku = code.trim().toUpperCase();
-  // SKU 매칭 (정확 매칭 or 포함 매칭)
+  let sku = code.trim().toUpperCase();
+
+  // 너무 짧은 코드는 무시 (오인식 방지)
+  if (sku.length < 4) return;
+
+  // 바코드→SKU 변환 (매핑 테이블 우선)
+  if (barcodeToSku.has(sku)) sku = barcodeToSku.get(sku).toUpperCase();
+
+  // SKU 매칭 (정확 매칭 우선, 포함 매칭은 최소 6자 이상만)
   let matched = null;
   const skuRev = sku.split('').reverse().join(''); // 역방향 스캔 대응
   if (skuMap.has(sku)) matched = sku;
   else if (skuMap.has(skuRev)) matched = skuRev;
-  else {
+  else if (sku.length >= 6) {
+    // 포함 매칭은 6자 이상일 때만 허용 (짧은 코드의 오매칭 방지)
     for (const [k] of skuMap) {
       const ku = k.toUpperCase();
       if (ku === sku || ku === skuRev || ku.includes(sku) || sku.includes(ku) || ku.includes(skuRev)) { matched = k; break; }
@@ -418,10 +509,10 @@ function handleScan(code) {
     // 실패 피드백
     beepError();
     if (navigator.vibrate) navigator.vibrate([100,50,100]);
-    speak('없는 SKU입니다');
+    speak('없는 스큐입니다');
     document.getElementById('lastScanResult').classList.remove('hidden');
     document.getElementById('lastScanSku').textContent = code;
-    document.getElementById('lastScanName').textContent = '없는 SKU입니다';
+    document.getElementById('lastScanName').textContent = '없는 스큐입니다';
     document.getElementById('lastScanPicked').textContent = '';
     document.getElementById('lastScanTarget').textContent = '';
     document.getElementById('lastScanBadge').innerHTML = '<span class="text-red-400">✗</span>';
@@ -429,6 +520,21 @@ function handleScan(code) {
   }
 
   const info = skuMap.get(matched);
+
+  // 과스캔 방지: 이미 목표수량 완료된 SKU
+  if (info.picked >= info.target) {
+    beepError();
+    if (navigator.vibrate) navigator.vibrate([100,50,100]);
+    speak('이미 스캔 완료된 스큐입니다. 과스캔입니다. 수량을 확인하세요.');
+    document.getElementById('lastScanResult').classList.remove('hidden');
+    document.getElementById('lastScanSku').textContent = matched;
+    document.getElementById('lastScanName').textContent = info.name;
+    document.getElementById('lastScanPicked').textContent = `${info.picked}/${info.target}`;
+    document.getElementById('lastScanTarget').textContent = '⚠️ 과스캔!';
+    document.getElementById('lastScanBadge').innerHTML = '<span class="text-orange-500">⚠</span>';
+    return;
+  }
+
   info.picked++;
   // 성공 피드백 (상황별 음성)
   const remain = info.target - info.picked;
@@ -437,7 +543,7 @@ function handleScan(code) {
     let allDone = true;
     for (const [, v] of skuMap) { if (v.picked < v.target) { allDone = false; break; } }
     if (allDone) speak('전체 피킹 완료');
-    else speak('피킹 완료');
+    else speak('스캔 완료');
   } else {
     beepOk();
     speak(`성공. ${remain}개 남음`);
@@ -451,15 +557,25 @@ function handleScan(code) {
   document.getElementById('lastScanPicked').textContent = `${info.picked}/${info.target}`;
   document.getElementById('lastScanTarget').textContent = info.picked >= info.target ? '완료!' : `${info.target - info.picked}개 남음`;
   if (info.imgUrl) {
-    document.getElementById('lastScanImg').innerHTML = `<img src="${info.imgUrl}" class="w-full h-full object-cover">`;
+    document.getElementById('lastScanImg').innerHTML = `<img src="${info.imgUrl}" class="w-full h-full object-cover cursor-pointer" onclick="showImageOverlay('${info.imgUrl}')">`;
+  } else {
+    document.getElementById('lastScanImg').innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center bg-slate-100 rounded-lg text-slate-400 text-xs"><i class="fa-solid fa-image text-lg"></i></div>`;
+    // 이미 물어본 SKU는 다시 안 물어봄
+    if (!_imageAskedSkus.has(matched)) {
+      _imageAskedSkus.add(matched);
+      const wasScannerRunning = scannerRunning;
+      if (scannerRunning) { try { Quagga.stop(); Quagga.offDetected(); } catch(e){} scannerRunning = false; }
+      showImagePrompt(matched, wasScannerRunning);
+    }
   }
   const pct = Math.round((info.picked / info.target) * 100);
   document.getElementById('lastScanBadge').innerHTML = info.picked >= info.target
     ? '<span class="text-emerald-500">✓</span>'
     : `<span class="text-indigo-500">${pct}%</span>`;
 
-  renderSkuList();
+  renderSkuList(matched);
   updateStats();
+  savePickingProgress();
 }
 
 function manualInput() {
@@ -467,53 +583,191 @@ function manualInput() {
   if (code && code.trim()) handleScan(code.trim());
 }
 
-// ── 바코드 스캐너 ──
-let _lastCode = '', _lastTime = 0;
+// ── SKU별 퀵 완료 ──
+function quickComplete(sku) {
+  if (!skuMap.has(sku)) return;
+  const info = skuMap.get(sku);
+  if (info.picked >= info.target) return;
+  if (!confirm(`${sku} (${info.name})\n${info.picked}/${info.target} → 스캔 완료 처리?`)) return;
+  info.picked = info.target;
+  beepComplete();
+  speak('스캔 완료');
+  renderSkuList(sku);
+  updateStats();
+  savePickingProgress();
+}
 
-async function startScanner() {
+// ── 강제 피킹완료 ──
+function forceCompletePicking() {
+  if (!currentSession || !skuMap.size) return;
+  // 미완료 SKU 집계
+  let notDone = [];
+  for (const [sku, info] of skuMap) {
+    if (info.picked < info.target) notDone.push(`${sku}: ${info.picked}/${info.target}`);
+  }
+  const msg = notDone.length
+    ? `⚠️ 미완료 SKU ${notDone.length}건:\n${notDone.slice(0,5).join('\n')}${notDone.length>5?'\n..외 '+(notDone.length-5)+'건':''}\n\n강제 피킹완료 하시겠습니까?`
+    : '모든 SKU가 스캔 완료되었습니다.\n피킹완료 처리하시겠습니까?';
+
+  if (!confirm(msg)) return;
+
+  // 피킹 로그 저장 (강제완료 표시)
+  let totalQty = 0, pickedQty = 0;
+  for (const [, info] of skuMap) { totalQty += info.target; pickedQty += info.picked; }
+  api('savePickingLog', {
+    uploadTimestamp: currentSession,
+    rowCount: totalQty,
+    pickedBy: 'mobile_force_complete',
+    memo: `강제완료 (${pickedQty}/${totalQty} 스캔됨, 미완료 ${notDone.length}건)`
+  }).then(() => {
+    alert('강제 피킹완료 처리되었습니다.');
+    speak('강제 피킹완료');
+    sessionStorage.removeItem('picking_' + currentSession);
+    resetPicking();
+    loadSessions();
+  }).catch(e => alert('저장 실패: ' + e.message));
+}
+
+// ── 이미지 등록 확인 다이얼로그 ──
+function showImagePrompt(sku, resumeScanner) {
+  let ov = document.getElementById('imgPromptOverlay');
+  if (ov) ov.remove();
+  ov = document.createElement('div');
+  ov.id = 'imgPromptOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:998;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:20px;';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;max-width:300px;width:100%;text-align:center;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;">[${sku}]</div>
+      <div style="font-size:13px;color:#666;margin-bottom:20px;">스큐 이미지가 없습니다.<br>촬영하여 등록하시겠습니까?</div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="dismissImagePrompt(false, '${sku}', ${resumeScanner})" style="flex:1;padding:10px;border-radius:10px;border:1px solid #ddd;background:#f5f5f5;font-size:13px;color:#666;">취소</button>
+        <button onclick="dismissImagePrompt(true, '${sku}', ${resumeScanner})" style="flex:1;padding:10px;border-radius:10px;border:none;background:#6366f1;color:#fff;font-size:13px;font-weight:600;">등록</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+}
+
+function dismissImagePrompt(doUpload, sku, resumeScanner) {
+  const ov = document.getElementById('imgPromptOverlay');
+  if (ov) ov.remove();
+  if (doUpload) {
+    captureSkuImage(sku, resumeScanner);
+  } else {
+    // 취소 → 스캐너 재개
+    if (resumeScanner) startScanner();
+  }
+}
+
+// ── SKU 이미지 촬영 등록 ──
+function captureSkuImage(sku, resumeScanner) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) { if (resumeScanner) startScanner(); return; }
+    const canvas = document.createElement('canvas');
+    const img = new Image();
+    img.onload = async () => {
+      const maxW = 400;
+      const scale = maxW / img.width;
+      canvas.width = maxW;
+      canvas.height = img.height * scale;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      const base64 = canvas.toDataURL('image/jpeg', 0.7);
+      try {
+        const r = await api('uploadSkuImage', { sku, base64 });
+        if (r.ok && r.url) {
+          imageCache[sku] = r.url;
+          if (skuMap.has(sku)) skuMap.get(sku).imgUrl = r.url;
+          document.getElementById('lastScanImg').innerHTML = `<img src="${r.url}" class="w-full h-full object-cover cursor-pointer" onclick="showImageOverlay('${r.url}')">`;
+          renderSkuList();
+          speak('이미지 등록 완료');
+        }
+      } catch(err) { console.error('이미지 업로드 실패:', err); }
+      // 등록 완료 후 스캐너 재개
+      if (resumeScanner) startScanner();
+    };
+    img.src = URL.createObjectURL(file);
+  };
+  input.click();
+}
+
+// ── 바코드 스캐너 ──
+let _lastCode = '', _lastTime = 0, _scanPaused = false;
+let _pendingCode = '', _pendingCount = 0; // 연속 일치 확인용
+
+function startScanner() {
   if (scannerRunning) return;
   const vp = document.getElementById('scannerViewport');
 
-  // 카메라 권한 체크
-  let cameraOk = false;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    stream.getTracks().forEach(t => t.stop());
-    cameraOk = true;
-  } catch(e) { console.warn('카메라 불가:', e); }
-
-  if (!cameraOk) {
-    vp.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center"><i class="fa-solid fa-video-slash text-2xl text-red-300 mb-2"></i><div class="text-xs">카메라 사용 불가</div><div class="text-xs mt-1">아래 [촬영] 또는 [입력] 사용</div></div>';
-    return;
-  }
-
   if (typeof Quagga === 'undefined') { alert('QuaggaJS 로드 실패'); return; }
-  vp.innerHTML = '<div class="scan-line"></div>';
+  vp.innerHTML = '<div class="scan-box"></div>';
 
   Quagga.init({
-    inputStream: { name:'Live', type:'LiveStream', target:vp, constraints:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } },
+    inputStream: { name:'Live', type:'LiveStream', target:vp, constraints:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, area: { top:'20%', right:'5%', left:'5%', bottom:'20%' } },
     decoder: {
-      readers:['code_128_reader','ean_reader','ean_8_reader','code_39_reader','upc_reader','upc_e_reader','codabar_reader'],
+      readers:['ean_reader'],
       multiple: false
     },
     locate: true,
     locator: { patchSize: 'medium', halfSample: false },
-    frequency: 15
+    frequency: 20
   }, function(err) {
-    if (err) { vp.innerHTML = '<div class="text-center text-red-400 p-4 text-sm">' + (err.message||'카메라 시작 실패') + '</div>'; return; }
+    if (err) { vp.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center text-slate-400 p-4 text-center"><i class="fa-solid fa-video-slash text-2xl text-red-300 mb-2"></i><div class="text-xs">카메라 사용 불가</div><div class="text-xs mt-1 text-red-300">' + (err.message||'') + '</div><div class="text-xs mt-1">아래 [촬영] 또는 [입력] 사용</div></div>'; return; }
     Quagga.start();
     scannerRunning = true;
     document.getElementById('btnStartScan').classList.add('hidden');
     document.getElementById('btnStopScan').classList.remove('hidden');
+    document.getElementById('btnSnapScan').classList.remove('hidden');
   });
 
   Quagga.offDetected();
   Quagga.onDetected(function(result) {
     const code = result.codeResult.code;
-    if (!code) return;
-    if (code === _lastCode && Date.now() - _lastTime < 1000) return;
-    _lastCode = code; _lastTime = Date.now();
+    if (!code || _scanPaused) return;
+    // 최소 길이 필터 (너무 짧은 오인식 차단)
+    if (code.length < 4) return;
+    // confidence 체크 (오인식 방지) - 임계값 0.12로 강화
+    const errors = result.codeResult.decodedCodes;
+    if (errors && errors.length) {
+      const errsWithVal = errors.filter(c => c.error !== undefined);
+      if (errsWithVal.length === 0) return;
+      const avgErr = errsWithVal.reduce((s, c) => s + c.error, 0) / errsWithVal.length;
+      if (avgErr > 0.12) return; // 신뢰도 낮으면 무시
+    }
+    // EAN-13 체크섬 검증 (13자리 숫자일 때)
+    if (/^\d{13}$/.test(code)) {
+      const digits = code.split('').map(Number);
+      const checksum = digits.slice(0, 12).reduce((sum, d, i) => sum + d * (i % 2 === 0 ? 1 : 3), 0);
+      if ((10 - (checksum % 10)) % 10 !== digits[12]) return; // 체크섬 불일치 → 무시
+    }
+    // 모든 스캔은 2회 연속 동일해야 accept (오인식 방지)
+    if (_pendingCode === code) { _pendingCount++; } else { _pendingCode = code; _pendingCount = 1; }
+    if (_pendingCount < 2) return;
+    _pendingCount = 0; _pendingCode = '';
+    // 같은 코드 3초 쿨다운
+    const now = Date.now();
+    if (code === _lastCode && now - _lastTime < 3000) return;
+    _lastCode = code; _lastTime = now;
+
+    // 스캔 일시정지 + 블랙화면 1초
+    _scanPaused = true;
+    const vp = document.getElementById('scannerViewport');
+    const videoEl = vp.querySelector('video');
+    if (videoEl) { videoEl.style.opacity = '0'; videoEl.style.transition = 'none'; }
+    vp.style.background = '#000';
+
     handleScan(code);
+
+    setTimeout(() => {
+      try {
+        const vp2 = document.getElementById('scannerViewport');
+        const vid = vp2 ? vp2.querySelector('video') : null;
+        if (vid) { vid.style.opacity = '1'; }
+        if (vp2) vp2.style.background = 'transparent';
+      } catch(e) { console.warn('스캔 복원 오류:', e); }
+      _scanPaused = false;
+    }, 1000);
   });
 }
 
@@ -523,6 +777,39 @@ function stopScanner() {
   scannerRunning = false;
   document.getElementById('btnStartScan').classList.remove('hidden');
   document.getElementById('btnStopScan').classList.add('hidden');
+  document.getElementById('btnSnapScan').classList.add('hidden');
+}
+
+// 즉시 스캔: 현재 화면 캡처하여 바코드 인식
+function snapScan() {
+  if (!scannerRunning) return;
+  const vp = document.getElementById('scannerViewport');
+  const videoEl = vp.querySelector('video');
+  if (!videoEl) return;
+  const canvas = document.createElement('canvas');
+  canvas.width = videoEl.videoWidth || 1280;
+  canvas.height = videoEl.videoHeight || 720;
+  canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  Quagga.decodeSingle({
+    src: dataUrl, numOfWorkers: 0, locate: true,
+    decoder: { readers:['ean_reader','code_128_reader','upc_reader','upc_e_reader'] }
+  }, function(result) {
+    if (result && result.codeResult && result.codeResult.code) {
+      _scanPaused = true;
+      if (videoEl) { videoEl.style.opacity = '0'; }
+      vp.style.background = '#000';
+      handleScan(result.codeResult.code);
+      setTimeout(() => {
+        if (videoEl) videoEl.style.opacity = '1';
+        vp.style.background = 'transparent';
+        _scanPaused = false;
+      }, 1000);
+    } else {
+      beepError();
+      speak('인식 실패. 다시 시도하세요.');
+    }
+  });
 }
 
 function photoScan() {
@@ -534,7 +821,7 @@ function photoScan() {
     if (typeof Quagga !== 'undefined') {
       Quagga.decodeSingle({
         src: url, numOfWorkers: 0, locate: true,
-        decoder: { readers:['code_128_reader','ean_reader','ean_8_reader','code_39_reader','upc_reader'] }
+        decoder: { readers:['code_128_reader','ean_reader','code_39_reader','upc_reader'] }
       }, function(result) {
         URL.revokeObjectURL(url);
         if (result && result.codeResult && result.codeResult.code) {
@@ -556,44 +843,75 @@ function photoScan() {
 // ── SKU 이미지 로드 ──
 async function loadSkuImages() {
   const skuList = Array.from(skuMap.keys());
-  try {
-    const r = await api('serverGetSkuImages', { skuList });
-    if (r.ok && r.images) {
-      for (const [sku, url] of Object.entries(r.images)) {
-        imageCache[sku] = url;
-        if (skuMap.has(sku)) skuMap.get(sku).imgUrl = url;
-      }
-      renderSkuList();
+  // 1) 바코드맵에서 가져온 이미지 먼저 적용
+  for (const sku of skuList) {
+    const si = skuInfoMap[sku];
+    if (si && si.imageUrl) {
+      imageCache[sku] = si.imageUrl;
+      if (skuMap.has(sku)) skuMap.get(sku).imgUrl = si.imageUrl;
     }
-  } catch(e) { console.log('이미지 로드 실패:', e); }
+  }
+  renderSkuList();
+  // 2) Drive 이미지도 보조로 로드 (바코드맵에 없는 것만)
+  const noImg = skuList.filter(s => !imageCache[s]);
+  if (noImg.length) {
+    try {
+      const r = await api('getSkuImages', { skus: noImg });
+      if (r.ok && r.images) {
+        for (const [sku, url] of Object.entries(r.images)) {
+          imageCache[sku] = url;
+          if (skuMap.has(sku)) skuMap.get(sku).imgUrl = url;
+        }
+        renderSkuList();
+      }
+    } catch(e) { console.log('Drive 이미지 로드 실패:', e); }
+  }
 }
 
 // ── UI 렌더링 ──
-function renderSkuList() {
+function renderSkuList(highlightSku) {
   const el = document.getElementById('skuList');
   const entries = Array.from(skuMap.entries()).sort((a,b) => {
+    // 1) 완료된 것은 맨 뒤
     const aDone = a[1].picked >= a[1].target ? 1 : 0;
     const bDone = b[1].picked >= b[1].target ? 1 : 0;
-    return aDone - bDone || a[0].localeCompare(b[0]);
+    if (aDone !== bDone) return aDone - bDone;
+    // 2) 합포 먼저 (isMulti=true 우선)
+    const aMulti = a[1].isMulti ? 0 : 1;
+    const bMulti = b[1].isMulti ? 0 : 1;
+    if (aMulti !== bMulti) return aMulti - bMulti;
+    return a[0].localeCompare(b[0]);
   });
 
   el.innerHTML = entries.map(([sku, info]) => {
     const done = info.picked >= info.target;
     const partial = info.picked > 0 && !done;
     const cls = done ? 'sku-done opacity-60' : partial ? 'sku-partial' : 'sku-none';
-    const img = info.imgUrl ? `<img src="${info.imgUrl}" class="w-10 h-10 rounded-lg object-cover">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center"><i class="fa-solid fa-image text-slate-300 text-xs"></i></div>`;
-    return `<div class="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}">
+    const tag = info.isMulti ? '<span class="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 font-bold">합포</span>' : '<span class="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-400">단포</span>';
+    const img = info.imgUrl ? `<img src="${info.imgUrl}" class="w-10 h-10 rounded-lg object-cover cursor-pointer" onclick="event.stopPropagation();showImageOverlay('${info.imgUrl}')">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center cursor-pointer" onclick="event.stopPropagation();captureSkuImage('${sku}')"><i class="fa-solid fa-camera text-slate-300 text-xs"></i></div>`;
+    const barcodeStr = info.barcode ? `<span class="text-[10px] text-slate-300 ml-1">BC:${info.barcode}</span>` : '';
+    const rackStr = info.rack ? `<span class="text-[10px] text-blue-400 ml-1">📍${info.rack}</span>` : '';
+    return `<div data-sku="${sku}" class="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}">
       ${img}
       <div class="flex-1 min-w-0">
-        <div class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</div>
+        <div class="flex items-center gap-1"><span class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</span>${tag}</div>
         <div class="text-[11px] text-slate-400 truncate">${info.name}</div>
+        <div class="truncate">${barcodeStr}${rackStr}</div>
       </div>
-      <div class="text-right shrink-0">
+      <div class="text-right shrink-0 flex flex-col items-end gap-1">
         <div class="text-sm font-bold ${done ? 'text-emerald-500' : partial ? 'text-amber-500' : 'text-slate-400'}">${info.picked}/${info.target}</div>
-        ${done ? '<div class="text-[10px] text-emerald-500">완료</div>' : ''}
+        ${done ? '<div class="text-[10px] text-emerald-500">완료</div>' : `<button onclick="event.stopPropagation();quickComplete('${sku}')" class="px-2 py-0.5 rounded bg-red-500 text-white text-[10px] font-semibold active:bg-red-600">강제완료</button>`}
       </div>
     </div>`;
   }).join('');
+
+  // 스캔된 SKU로 자동 스크롤
+  if (highlightSku) {
+    requestAnimationFrame(() => {
+      const target = el.querySelector(`[data-sku="${highlightSku}"]`);
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
 }
 
 let _pickingSaved = false;
@@ -608,6 +926,8 @@ function updateStats() {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   document.getElementById('progressPct').textContent = pct + '%';
   document.getElementById('progressBar').style.width = pct + '%';
+  const rb = document.getElementById('pickRateBadge');
+  if (rb) rb.textContent = pct + '%';
 
   // 모든 SKU 완료 시 피킹 이력 저장
   if (done === total && total > 0 && !_pickingSaved && currentSession) {
@@ -728,6 +1048,18 @@ async function loadStatus() {
   } catch(e) {
     el.innerHTML = '<div class="text-center text-red-400 py-4">오류: ' + e.message + '</div>';
   }
+}
+// ── 이미지 확대 오버레이 ──
+function showImageOverlay(src) {
+  let ov = document.getElementById('imgOverlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'imgOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:20px;';
+    ov.onclick = () => ov.remove();
+    document.body.appendChild(ov);
+  }
+  ov.innerHTML = `<img src="${src}" style="max-width:90vw;max-height:85vh;border-radius:12px;object-fit:contain;">`;
 }
 </script>
 </body>
