@@ -411,7 +411,7 @@ async function loadSessions() {
           <div><span class="font-semibold text-slate-700">${label}</span>${badge}</div>
           <span class="text-sm font-semibold text-slate-500">${s.count.toLocaleString()}건</span>
         </div>
-        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
+        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}${s.pickedTimestamp ? ' · 피킹완료 ' + new Date(s.pickedTimestamp).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
       </button>`;
     }).join('');
   } catch(e) {
@@ -1090,6 +1090,12 @@ async function loadSkuImages() {
   }
 }
 
+// 로케이션 큰 글자 포맷 (영문 bold + 숫자 색상)
+function formatRackBig(rack) {
+  if (!rack) return '';
+  return '<span class="font-mono text-xl leading-tight">' + rack.replace(/([A-Za-z]+)/g, '<span class="font-black text-slate-800">$1</span>').replace(/(\d+)/g, '<span class="font-bold text-indigo-500">$1</span>') + '</span>';
+}
+
 // ── UI 렌더링 ──
 function renderSkuList(highlightSku) {
   const el = document.getElementById('skuList');
@@ -1125,15 +1131,16 @@ function renderSkuList(highlightSku) {
     const tag = info.isMulti ? '<span class="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 font-bold">합포</span>' : '<span class="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-400">단포</span>';
     const img = info.imgUrl ? `<img src="${info.imgUrl}" class="w-10 h-10 rounded-lg object-cover cursor-pointer" onclick="event.stopPropagation();showImageOverlay('${info.imgUrl}')">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center cursor-pointer" onclick="event.stopPropagation();captureSkuImage('${sku}')"><i class="fa-solid fa-camera text-slate-300 text-xs"></i></div>`;
     const barcodeStr = info.barcode ? `<span class="text-[10px] text-slate-300 ml-1">BC:${info.barcode}</span>` : '';
-    const rackStr = info.rack ? `<span class="text-[10px] text-blue-400 ml-1">📍${info.rack}</span>` : '';
+    const rackFormatted = info.rack ? formatRackBig(info.rack) : '';
     return `<div data-sku="${sku}" class="sku-swipe flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}" style="transition:transform 0.2s;touch-action:pan-y;">
       ${img}
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-1"><span class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</span>${tag}</div>
         <div class="text-[11px] text-slate-400 truncate">${info.name}</div>
-        <div class="truncate">${barcodeStr}${rackStr}</div>
+        ${barcodeStr ? '<div class="truncate">' + barcodeStr + '</div>' : ''}
       </div>
       <div class="text-right shrink-0 flex flex-col items-end gap-1">
+        ${rackFormatted ? '<div>' + rackFormatted + '</div>' : ''}
         <div class="text-sm font-bold ${partial ? 'text-amber-500' : 'text-slate-400'}">${info.picked}/${info.target}</div>
         <button onclick="event.stopPropagation();quickComplete('${sku}')" class="px-2 py-0.5 rounded bg-red-500 text-white text-[10px] font-semibold active:bg-red-600">강제완료</button>
       </div>
@@ -1373,12 +1380,17 @@ async function loadInvSessions() {
     el.innerHTML = picked.map(s => {
       const dt = new Date(s.uploadTimestamp);
       const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      let pickTimeStr = '';
+      if (s.pickedTimestamp) {
+        const pt = new Date(s.pickedTimestamp);
+        if (!isNaN(pt.getTime())) pickTimeStr = `피킹완료 ${pt.getHours()}:${String(pt.getMinutes()).padStart(2,'0')}`;
+      }
       return `<button onclick="selectInvSession('${s.uploadTimestamp}')" class="w-full text-left rounded-xl border border-teal-200 bg-teal-50/50 p-3 active:opacity-70 transition">
         <div class="flex items-center justify-between">
           <div><span class="font-semibold text-slate-700">${label}</span><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold badge-picked ml-1.5"><i class="fa-solid fa-check mr-0.5"></i>피킹완료</span></div>
           <span class="text-sm font-semibold text-slate-500">${s.count.toLocaleString()}건</span>
         </div>
-        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
+        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}${pickTimeStr ? ' · ' + pickTimeStr : ''}</div>
       </button>`;
     }).join('');
   } catch(e) { el.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">로드 실패</div>'; }
