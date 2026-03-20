@@ -687,14 +687,11 @@ function flushPickingToServer() {
   const ts = currentSession;
   // 변경된 것만 전송 (picked>0 또는 hold)
   const sendDetails = details.filter(d => d.picked > 0 || d.hold);
-  console.log('[피킹저장] 전송:', ts, sendDetails.length + '/' + details.length + '종');
+  if (!sendDetails.length) { console.log('[피킹저장] 저장할 데이터 없음, 스킵'); return; }
+  console.log('[피킹저장] 전송:', ts, sendDetails.length + '종');
 
   api('savePickingDetail', { uploadTimestamp: ts, details: sendDetails })
-    .then(r => {
-      console.log('[피킹저장] 응답:', JSON.stringify(r));
-      // 디버그: 임시 alert
-      if (!r || !r.ok) console.warn('[피킹저장] 실패:', r);
-    })
+    .then(r => { if (!r || !r.ok) console.warn('[피킹저장] 실패:', r); })
     .catch(e => console.warn('[피킹저장] 에러:', e));
 }
 
