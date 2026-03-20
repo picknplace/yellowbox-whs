@@ -2051,7 +2051,9 @@ async function smartDirectoryPicker() {
         return;
       }
 
-      metaEl.textContent = "피킹현황을 볼 세션을 선택하세요.";
+      metaEl.textContent = "피킹현황을 볼 세션을 선택하세요. (진행률 조회 중...)";
+
+      // 먼저 세션 목록 렌더 (진행률은 placeholder)
       let html = '';
       for (const s of sessions) {
         const ts = s.uploadTimestamp || '';
@@ -2065,6 +2067,13 @@ async function smartDirectoryPicker() {
             <span class="font-semibold text-slate-700">${label}</span>
             <span class="text-sm text-slate-500">${s.count.toLocaleString()}건 ${pickedBadge}</span>
           </div>
+          <div id="psProgress_${ts.replace(/[^a-zA-Z0-9]/g,'_')}" class="mt-2 hidden">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden"><div class="psProgressInner h-full bg-emerald-400 rounded-full transition-all" style="width:0%"></div></div>
+              <span class="psProgressText text-xs text-slate-500">조회중...</span>
+            </div>
+            <div class="psProgressDetail flex gap-2 mt-1 text-xs"></div>
+          </div>
           <div class="text-xs text-slate-400 mt-1">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
         </button>`;
       }
@@ -2073,6 +2082,67 @@ async function smartDirectoryPicker() {
       // 세션 클릭 핸들러
       wrap.querySelectorAll('.ps-session-btn').forEach(btn => {
         btn.onclick = () => loadPickingStatus(btn.dataset.uploadTs);
+      });
+
+      // 각 세션별 피킹 진행률 병렬 조회
+      const detailPromises = sessions.map(async (s) => {
+        const ts = s.uploadTimestamp || '';
+        const elId = 'psProgress_' + ts.replace(/[^a-zA-Z0-9]/g,'_');
+        const el = document.getElementById(elId);
+        if (!el) return;
+        el.classList.remove('hidden');
+
+        try {
+          const [orderRes, pickRes] = await Promise.all([
+            gasRun("serverGetOrdersByUploadSession", ts),
+            gasRun("serverGetPickingDetail", ts)
+          ]);
+
+          const rows = (orderRes && orderRes.ok) ? (orderRes.rows || []) : [];
+          const details = (pickRes && pickRes.details) || [];
+
+          // SKU별 target 집계
+          const skuTarget = new Map();
+          for (const r of rows) {
+            const sku = r.sku || '';
+            const cur = skuTarget.get(sku) || 0;
+            skuTarget.set(sku, cur + (Number(r.qty) || 0));
+          }
+
+          // 피킹 상세 매핑
+          const pickMap = new Map();
+          for (const d of details) pickMap.set(d.sku, d);
+
+          let doneCnt = 0, partialCnt = 0, holdCnt = 0, noneCnt = 0;
+          let totalTarget = 0, totalPicked = 0;
+          for (const [sku, target] of skuTarget) {
+            totalTarget += target;
+            const p = pickMap.get(sku);
+            const picked = p ? (p.picked || 0) : 0;
+            totalPicked += Math.min(picked, target);
+            if (p && p.hold) holdCnt++;
+            else if (picked >= target) doneCnt++;
+            else if (picked > 0) partialCnt++;
+            else noneCnt++;
+          }
+
+          const pct = totalTarget > 0 ? Math.round(totalPicked / totalTarget * 100) : 0;
+          const totalSku = skuTarget.size;
+
+          el.querySelector('.psProgressInner').style.width = pct + '%';
+          el.querySelector('.psProgressText').textContent = `${totalPicked}/${totalTarget}개 (${pct}%)`;
+          el.querySelector('.psProgressDetail').innerHTML =
+            `<span class="text-emerald-600">완료 ${doneCnt}</span>` +
+            (partialCnt ? `<span class="text-amber-600">진행 ${partialCnt}</span>` : '') +
+            (holdCnt ? `<span class="text-red-600">보류 ${holdCnt}</span>` : '') +
+            `<span class="text-slate-400">미피킹 ${noneCnt}</span>` +
+            `<span class="text-slate-400">· SKU ${totalSku}종</span>`;
+        } catch(e) {
+          el.querySelector('.psProgressText').textContent = '조회실패';
+        }
+      });
+      Promise.all(detailPromises).then(() => {
+        metaEl.textContent = "피킹현황을 볼 세션을 선택하세요.";
       });
     } catch(e) {
       metaEl.textContent = "서버 오류: " + e.message;
