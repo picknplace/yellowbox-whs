@@ -2089,7 +2089,7 @@ async function smartDirectoryPicker() {
 
           // 피킹 상세 매핑
           const pickMap = new Map();
-          for (const d of details) pickMap.set(d.sku, d);
+          for (const d of details) pickMap.set(String(d.sku), d);
 
           let doneCnt = 0, partialCnt = 0, holdCnt = 0, noneCnt = 0;
           let totalTarget = 0, totalPicked = 0;
@@ -2152,8 +2152,6 @@ async function smartDirectoryPicker() {
         gasRun("serverGetPickingDetail", uploadTs)
       ]);
 
-      alert('[PC디버그] pickResult=' + JSON.stringify(pickResult).substring(0, 300));
-
       if (!orderResult || !orderResult.ok) {
         inlineEl.innerHTML = '<div class="text-sm text-red-400">주문 데이터 로드 실패</div>';
         return;
@@ -2171,11 +2169,11 @@ async function smartDirectoryPicker() {
         skuTargetMap.set(sku, cur);
       }
 
-      // 피킹 상세 매핑
+      // 피킹 상세 매핑 (SKU를 문자열로 통일)
       const pickDetails = (pickResult && pickResult.details) || [];
       const pickMap = new Map();
       for (const d of pickDetails) {
-        pickMap.set(d.sku, { picked: d.picked || 0, hold: !!d.hold, updatedAt: d.updatedAt || '' });
+        pickMap.set(String(d.sku), { picked: d.picked || 0, hold: !!d.hold, updatedAt: d.updatedAt || '' });
       }
 
       // 통합 데이터 빌드

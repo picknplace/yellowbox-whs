@@ -395,8 +395,9 @@ async function restorePickingProgress(ts) {
     const res = await api('getPickingDetail', { uploadTimestamp: ts });
     if (res && res.details && res.details.length > 0) {
       for (const d of res.details) {
-        if (skuMap.has(d.sku)) {
-          const info = skuMap.get(d.sku);
+        const sku = String(d.sku);
+        if (skuMap.has(sku)) {
+          const info = skuMap.get(sku);
           info.picked = Math.min(d.picked || 0, info.target);
           info.hold = !!d.hold;
         }
@@ -677,7 +678,6 @@ function quickComplete(sku) {
 }
 
 function flushPickingToServer() {
-  alert('[디버그] flush 호출됨. session=' + (currentSession||'없음') + ', skuMap=' + skuMap.size);
   if (!currentSession || !skuMap.size) return;
   clearTimeout(window._saveDetailTimer);
   const details = [];
@@ -693,16 +693,9 @@ function flushPickingToServer() {
     .then(r => {
       console.log('[피킹저장] 응답:', JSON.stringify(r));
       // 디버그: 임시 alert
-      if (r && r.ok) {
-        document.title = '✅ 저장완료 ' + sendDetails.length + '종';
-      } else {
-        alert('[피킹저장 실패] ' + JSON.stringify(r));
-      }
+      if (!r || !r.ok) console.warn('[피킹저장] 실패:', r);
     })
-    .catch(e => {
-      console.warn('[피킹저장] 에러:', e);
-      alert('[피킹저장 에러] ' + e.message);
-    });
+    .catch(e => console.warn('[피킹저장] 에러:', e));
 }
 
 // ── 강제 피킹완료 ──
