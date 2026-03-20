@@ -162,19 +162,15 @@
 
   <!-- 재고실사 탭 -->
   <div id="viewInventory" class="p-3 hidden">
-    <!-- 실사 시작 전 -->
-    <div id="invStart">
-      <div class="bg-white rounded-2xl p-4 border border-slate-100 mb-3">
-        <div class="text-sm font-semibold text-slate-600 mb-2"><i class="fa-solid fa-warehouse mr-1"></i>재고실사</div>
-        <p class="text-xs text-slate-400 mb-3">이카운트 재고를 불러와 바코드 스캔으로 실물 수량을 확인합니다.</p>
-        <div class="flex items-center gap-2 mb-3">
-          <label class="text-xs text-slate-500">기준일:</label>
-          <input id="invDate" type="date" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
-        </div>
-        <button id="btnLoadInv" onclick="loadInventoryData()" class="w-full py-3 rounded-xl bg-indigo-500 text-white font-semibold active:bg-indigo-600">
-          <i class="fa-solid fa-download mr-1"></i>재고 불러오기
-        </button>
-        <div id="invLoadStatus" class="mt-2 text-xs text-center text-slate-400"></div>
+    <!-- 세션 선택 (최근 피킹완료 세션) -->
+    <div id="invSessionPicker">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-clipboard-check mr-1"></i>재고실사 대상 선택</span>
+        <button class="text-xs text-indigo-500 font-semibold" onclick="loadInvSessions()"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button>
+      </div>
+      <p class="text-xs text-slate-400 mb-3">최근 피킹완료 세션의 SKU를 바코드 스캔으로 실물 재고 확인합니다.</p>
+      <div id="invSessionList" class="space-y-2 max-h-[50vh] overflow-y-auto">
+        <div class="text-center text-slate-400 py-6 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>
       </div>
     </div>
 
@@ -183,24 +179,35 @@
       <div class="flex items-center justify-between mb-2">
         <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-clipboard-check mr-1"></i>재고실사 · <span id="invCount">0</span>종</div>
         <div class="flex items-center gap-2">
-          <span id="invChecked" class="text-xs text-emerald-500 font-semibold">0건 확인</span>
-          <button onclick="resetInventory()" class="text-xs text-slate-400 underline">← 초기화</button>
+          <span id="invChecked" class="text-xs text-slate-400 font-semibold">스캔: 0</span>
+          <button onclick="resetInventory()" class="text-xs text-slate-400 underline">← 목록</button>
         </div>
       </div>
 
-      <!-- 실사 현황 바 -->
-      <div class="grid grid-cols-3 gap-2 mb-3">
+      <!-- 현황 바 -->
+      <div id="invStatsBar" class="grid grid-cols-3 gap-2 mb-3">
+        <div class="rounded-xl bg-indigo-50 border border-indigo-200 p-2 text-center">
+          <div class="text-[10px] text-indigo-500 font-semibold">전체SKU</div>
+          <div id="invStatTotal" class="text-lg font-bold text-indigo-600">0</div>
+        </div>
         <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-2 text-center">
-          <div class="text-[10px] text-emerald-500 font-semibold">일치</div>
-          <div id="invStatMatch" class="text-lg font-bold text-emerald-600">0</div>
+          <div class="text-[10px] text-emerald-500 font-semibold">스캔완료</div>
+          <div id="invStatScanned" class="text-lg font-bold text-emerald-600">0</div>
         </div>
-        <div class="rounded-xl bg-red-50 border border-red-200 p-2 text-center">
-          <div class="text-[10px] text-red-500 font-semibold">불일치</div>
-          <div id="invStatMismatch" class="text-lg font-bold text-red-600">0</div>
+        <div class="rounded-xl bg-amber-50 border border-amber-200 p-2 text-center">
+          <div class="text-[10px] text-amber-500 font-semibold">미스캔</div>
+          <div id="invStatRemain" class="text-lg font-bold text-amber-600">0</div>
         </div>
-        <div class="rounded-xl bg-slate-50 border border-slate-200 p-2 text-center">
-          <div class="text-[10px] text-slate-500 font-semibold">미확인</div>
-          <div id="invStatUnchecked" class="text-lg font-bold text-slate-600">0</div>
+      </div>
+
+      <!-- 진행률 -->
+      <div id="invProgressWrap" class="mb-3">
+        <div class="flex justify-between text-xs text-slate-400 mb-1">
+          <span>진행률</span>
+          <span id="invProgressPct">0%</span>
+        </div>
+        <div class="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+          <div id="invProgressBar" class="h-full bg-gradient-to-r from-indigo-400 to-indigo-500 rounded-full transition-all" style="width:0%"></div>
         </div>
       </div>
 
@@ -228,43 +235,43 @@
       </div>
 
       <!-- 마지막 스캔 결과 -->
-      <div id="invLastScan" class="hidden rounded-xl bg-white border-2 p-3 mb-2 shadow-sm">
-        <div class="flex items-center justify-between mb-1">
-          <span id="invLastSku" class="font-mono font-bold text-sm text-slate-800"></span>
-          <span id="invLastBadge" class="text-sm font-bold"></span>
-        </div>
-        <div id="invLastName" class="text-xs text-slate-400 mb-2"></div>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="text-center p-2 rounded-lg bg-slate-50">
-            <div class="text-[10px] text-slate-400">이카운트 재고</div>
-            <div id="invLastEcount" class="text-lg font-bold text-indigo-600">0</div>
-          </div>
-          <div class="text-center p-2 rounded-lg bg-slate-50">
-            <div class="text-[10px] text-slate-400">실물 수량</div>
-            <div class="flex items-center justify-center gap-1">
-              <button onclick="invAdjustQty(-1)" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 text-sm font-bold active:bg-slate-300">−</button>
-              <input id="invLastActual" type="number" class="w-14 text-center text-lg font-bold border border-slate-200 rounded-lg py-1" value="0" onchange="invUpdateActual()">
-              <button onclick="invAdjustQty(1)" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 text-sm font-bold active:bg-slate-300">+</button>
-            </div>
-          </div>
-        </div>
-        <button onclick="invConfirmItem()" class="w-full mt-2 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold active:bg-emerald-600">
-          <i class="fa-solid fa-check mr-1"></i>확인 완료
-        </button>
+      <div id="invLastScan" class="hidden rounded-lg bg-white border border-slate-200 px-3 py-1.5 mb-2 shadow-sm">
+        <span id="invLastSku" class="font-mono font-bold text-sm text-slate-800"></span>
+        <span id="invLastName" class="text-xs text-slate-400 ml-1"></span>
+        <span id="invLastScanned" class="text-sm font-semibold text-emerald-600 ml-2"></span>
+        <span id="invLastBadge" class="text-sm font-bold ml-1"></span>
       </div>
 
-      <!-- 필터 -->
-      <div class="flex gap-1.5 mb-2">
-        <button onclick="invFilter='all';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterAll">전체</button>
-        <button onclick="invFilter='checked';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterChecked">확인됨</button>
-        <button onclick="invFilter='mismatch';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterMismatch">불일치</button>
-        <button onclick="invFilter='unchecked';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterUnchecked">미확인</button>
-      </div>
-
-      <!-- 재고 리스트 -->
+      <!-- SKU 리스트 -->
       <div id="invList" class="space-y-1.5 max-h-[40vh] overflow-y-auto"></div>
 
-      <!-- 결과 내보내기 -->
+      <!-- 스캔완료 버튼 -->
+      <button id="btnInvComplete" onclick="completeInventoryCheck()" class="w-full mt-3 py-3 rounded-xl bg-emerald-500 text-white font-semibold active:bg-emerald-600">
+        <i class="fa-solid fa-clipboard-check mr-1"></i>스캔 완료 — 결과 확인
+      </button>
+    </div>
+
+    <!-- 실사 결과 -->
+    <div id="invResult" class="hidden">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm font-semibold text-slate-700"><i class="fa-solid fa-chart-column mr-1"></i>실사 결과</div>
+        <button onclick="resetInventory()" class="text-xs text-slate-400 underline">← 목록</button>
+      </div>
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-center">
+          <div class="text-[10px] text-emerald-500 font-semibold">일치</div>
+          <div id="invResMatch" class="text-lg font-bold text-emerald-600">0</div>
+        </div>
+        <div class="rounded-xl bg-red-50 border border-red-200 p-2.5 text-center">
+          <div class="text-[10px] text-red-500 font-semibold">부족</div>
+          <div id="invResShort" class="text-lg font-bold text-red-600">0</div>
+        </div>
+        <div class="rounded-xl bg-blue-50 border border-blue-200 p-2.5 text-center">
+          <div class="text-[10px] text-blue-500 font-semibold">과잉</div>
+          <div id="invResOver" class="text-lg font-bold text-blue-600">0</div>
+        </div>
+      </div>
+      <div id="invResultList" class="space-y-1.5 max-h-[50vh] overflow-y-auto"></div>
       <button onclick="exportInventoryResult()" class="w-full mt-3 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600">
         <i class="fa-solid fa-file-arrow-down mr-1"></i>실사결과 내보내기
       </button>
@@ -374,6 +381,7 @@ function switchTab(tab) {
     document.getElementById('view' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
   });
   if (tab === 'status') loadStatus();
+  if (tab === 'inventory' && !_invCurrentSession) loadInvSessions();
   if (tab !== 'picking' && scannerRunning) stopScanner();
   if (tab !== 'inventory' && invScannerRunning) stopInvScanner();
 }
@@ -1347,72 +1355,113 @@ async function loadStatus() {
   }
 }
 // ── 재고실사 ──
-let invMap = new Map(); // sku → { name, ecountQty, actualQty, checked, status:'match'|'mismatch'|'unchecked' }
+let invMap = new Map(); // sku → { name, ecountQty, scanned (actual count), target (from picking) }
 let invScannerRunning = false;
-let invFilter = 'all';
-let _invLastSku = null;
+let _invCurrentSession = null;
 let _invPendingCode = '', _invPendingCount = 0;
 let _invLastCode = '', _invLastTime = 0, _invScanPaused = false;
 
-// 기준일 기본값: 오늘
-(function() {
-  const d = new Date();
-  const ymd = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-  const el = document.getElementById('invDate');
-  if (el) el.value = ymd;
-})();
+// 실사탭 진입 시 세션 목록 로드
+async function loadInvSessions() {
+  const el = document.getElementById('invSessionList');
+  el.innerHTML = '<div class="text-center text-slate-400 py-6 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>';
+  try {
+    const r = await api('getUploadSessions', { days: 7 });
+    if (!r.ok) { el.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">오류</div>'; return; }
+    const picked = (r.sessions || []).filter(s => s.picked);
+    if (!picked.length) { el.innerHTML = '<div class="text-center text-slate-400 py-6 text-sm">최근 7일간 피킹완료 세션 없음</div>'; return; }
+    el.innerHTML = picked.map(s => {
+      const dt = new Date(s.uploadTimestamp);
+      const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      return `<button onclick="selectInvSession('${s.uploadTimestamp}')" class="w-full text-left rounded-xl border border-teal-200 bg-teal-50/50 p-3 active:opacity-70 transition">
+        <div class="flex items-center justify-between">
+          <div><span class="font-semibold text-slate-700">${label}</span><span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold badge-picked ml-1.5"><i class="fa-solid fa-check mr-0.5"></i>피킹완료</span></div>
+          <span class="text-sm font-semibold text-slate-500">${s.count.toLocaleString()}건</span>
+        </div>
+        <div class="text-xs text-slate-400 mt-0.5">${s.uploadedBy || ''} · ${s.uploadDate || ''}</div>
+      </button>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">로드 실패</div>'; }
+}
 
-async function loadInventoryData() {
-  const dateEl = document.getElementById('invDate');
-  const statusEl = document.getElementById('invLoadStatus');
-  if (!dateEl.value) { statusEl.textContent = '기준일을 선택하세요.'; return; }
-  const baseDate = dateEl.value.replace(/-/g, '');
-  statusEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-1"></i>이카운트 재고 불러오는 중...';
-  document.getElementById('btnLoadInv').disabled = true;
+async function selectInvSession(ts) {
+  _invCurrentSession = ts;
+  invMap.clear();
+  document.getElementById('invSessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-indigo-500"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>SKU 로드 + 이카운트 재고 조회 중...</div>';
 
   try {
-    const r = await api('ecountGetInventory', { baseDate, whCode: '0002' });
-    if (!r.ok) {
-      statusEl.innerHTML = '<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' + (r.error || '불러오기 실패') + '</span>';
-      document.getElementById('btnLoadInv').disabled = false;
+    // 1) 피킹 세션의 주문데이터에서 SKU 추출
+    const r = await api('getOrdersByUploadSession', { uploadTimestamp: ts });
+    if (!r.ok || !r.rows.length) {
+      document.getElementById('invSessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-slate-400">데이터 없음</div><button onclick="resetInventory()" class="text-xs text-indigo-500 underline">← 목록</button>';
       return;
     }
-    invMap.clear();
-    const items = r.results || r.inventory || r.data || [];
-    for (const item of items) {
-      const sku = String(item.PROD_CD || '').trim();
+    // SKU 집계 (피킹 출고수량)
+    const skuAgg = {};
+    for (const row of r.rows) {
+      const sku = String(row.sku || '').trim();
       if (!sku) continue;
-      const qty = Number(item.BAL_QTY || 0);
-      const name = String(item.PROD_DES || '').trim();
-      invMap.set(sku, { name, ecountQty: qty, actualQty: 0, checked: false, status: 'unchecked' });
+      if (!skuAgg[sku]) skuAgg[sku] = { name: row.skuName || '', pickQty: 0 };
+      skuAgg[sku].pickQty += Number(row.qty) || 0;
     }
-    if (!invMap.size) {
-      statusEl.innerHTML = '<span class="text-amber-500">재고 데이터가 없습니다.</span>';
-      document.getElementById('btnLoadInv').disabled = false;
-      return;
+    const skuList = Object.keys(skuAgg);
+
+    // 2) 이카운트 재고 조회
+    const today = new Date();
+    const baseDate = today.getFullYear() + String(today.getMonth()+1).padStart(2,'0') + String(today.getDate()).padStart(2,'0');
+    const inv = await api('ecountGetInventory', { baseDate, whCode: '00003', skuList });
+
+    const ecountMap = {};
+    if (inv.ok && inv.results) {
+      for (const item of inv.results) {
+        const pc = String(item.PROD_CD || '').trim();
+        ecountMap[pc] = { qty: Number(item.BAL_QTY || 0), name: String(item.PROD_DES || '') };
+      }
     }
-    // 실사 세션 시작
-    document.getElementById('invStart').classList.add('hidden');
+
+    // 3) invMap 구성
+    for (const [sku, agg] of Object.entries(skuAgg)) {
+      const ec = ecountMap[sku] || ecountMap[sku.toUpperCase()] || {};
+      invMap.set(sku, {
+        name: agg.name || ec.name || '',
+        ecountQty: ec.qty !== undefined ? ec.qty : '?',
+        pickQty: agg.pickQty,
+        scanned: 0
+      });
+    }
+
+    // UI
+    const dt = new Date(ts);
+    const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    document.getElementById('invSessionPicker').innerHTML =
+      `<div class="flex items-center justify-between mb-1">
+        <div class="text-xs text-slate-400">${label} 세션 기준</div>
+        <button onclick="resetInventory()" class="text-xs text-slate-400 underline">← 목록</button>
+      </div>`;
     document.getElementById('invSession').classList.remove('hidden');
     document.getElementById('invCount').textContent = invMap.size;
     updateInvStats();
     renderInvList();
   } catch(e) {
-    statusEl.innerHTML = '<span class="text-red-400">오류: ' + e.message + '</span>';
+    document.getElementById('invSessionPicker').innerHTML = '<div class="text-center py-4 text-sm text-red-400">오류: ' + e.message + '</div><button onclick="resetInventory()" class="text-xs text-indigo-500 underline">← 목록</button>';
   }
-  document.getElementById('btnLoadInv').disabled = false;
 }
 
 function resetInventory() {
-  if (invMap.size > 0 && !confirm('실사 데이터를 초기화하시겠습니까?')) return;
-  invMap.clear();
-  _invLastSku = null;
-  invFilter = 'all';
   stopInvScanner();
-  document.getElementById('invStart').classList.remove('hidden');
+  invMap.clear();
+  _invCurrentSession = null;
   document.getElementById('invSession').classList.add('hidden');
+  document.getElementById('invResult').classList.add('hidden');
   document.getElementById('invLastScan').classList.add('hidden');
-  document.getElementById('invLoadStatus').textContent = '';
+  document.getElementById('invSessionPicker').innerHTML =
+    `<div class="flex items-center justify-between mb-2">
+      <span class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-clipboard-check mr-1"></i>재고실사 대상 선택</span>
+      <button class="text-xs text-indigo-500 font-semibold" onclick="loadInvSessions()"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button>
+    </div>
+    <p class="text-xs text-slate-400 mb-3">최근 피킹완료 세션의 SKU를 바코드 스캔으로 실물 재고 확인합니다.</p>
+    <div id="invSessionList" class="space-y-2 max-h-[50vh] overflow-y-auto"></div>`;
+  loadInvSessions();
 }
 
 function handleInvScan(code) {
@@ -1427,10 +1476,7 @@ function handleInvScan(code) {
   let matched = null;
   if (invMap.has(sku)) matched = sku;
   else {
-    // 대소문자 무시 매칭
-    for (const [k] of invMap) {
-      if (k.toUpperCase() === sku) { matched = k; break; }
-    }
+    for (const [k] of invMap) { if (k.toUpperCase() === sku) { matched = k; break; } }
   }
   if (!matched && sku.length >= 6) {
     for (const [k] of invMap) {
@@ -1442,136 +1488,172 @@ function handleInvScan(code) {
   if (!matched) {
     beepError();
     if (navigator.vibrate) navigator.vibrate([100,50,100]);
-    speak('재고에 없는 스큐입니다');
-    const lastScan = document.getElementById('invLastScan');
-    lastScan.classList.remove('hidden');
-    lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + ' border-red-300';
+    speak('실사 대상에 없는 스큐입니다');
+    document.getElementById('invLastScan').classList.remove('hidden');
     document.getElementById('invLastSku').textContent = code;
-    document.getElementById('invLastName').textContent = '이카운트 재고에 없는 SKU';
-    document.getElementById('invLastBadge').innerHTML = '<span class="text-red-500">✗ 없음</span>';
-    document.getElementById('invLastEcount').textContent = '-';
-    document.getElementById('invLastActual').value = 0;
-    _invLastSku = null;
+    document.getElementById('invLastName').textContent = '대상 외 SKU';
+    document.getElementById('invLastScanned').textContent = '';
+    document.getElementById('invLastBadge').innerHTML = '<span class="text-red-400">✗</span>';
     return;
   }
+
+  const info = invMap.get(matched);
+  info.scanned++;
 
   beepOk();
   if (navigator.vibrate) navigator.vibrate(50);
-  const info = invMap.get(matched);
-  speak(`${info.name || matched}. 이카운트 재고 ${info.ecountQty}개`);
+  speak(`${info.scanned}개`);
 
-  _invLastSku = matched;
-  const lastScan = document.getElementById('invLastScan');
-  lastScan.classList.remove('hidden');
-  lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + ' border-indigo-300';
+  document.getElementById('invLastScan').classList.remove('hidden');
   document.getElementById('invLastSku').textContent = matched;
   document.getElementById('invLastName').textContent = info.name;
-  document.getElementById('invLastBadge').innerHTML = info.checked
-    ? (info.status === 'match' ? '<span class="text-emerald-500">✓ 일치</span>' : '<span class="text-red-500">✗ 불일치</span>')
-    : '<span class="text-amber-500">미확인</span>';
-  document.getElementById('invLastEcount').textContent = info.ecountQty;
-  document.getElementById('invLastActual').value = info.checked ? info.actualQty : info.ecountQty;
-}
-
-function invAdjustQty(delta) {
-  const el = document.getElementById('invLastActual');
-  const val = Math.max(0, (parseInt(el.value) || 0) + delta);
-  el.value = val;
-}
-
-function invUpdateActual() {
-  const el = document.getElementById('invLastActual');
-  el.value = Math.max(0, parseInt(el.value) || 0);
-}
-
-function invConfirmItem() {
-  if (!_invLastSku || !invMap.has(_invLastSku)) return;
-  const info = invMap.get(_invLastSku);
-  const actual = parseInt(document.getElementById('invLastActual').value) || 0;
-  info.actualQty = actual;
-  info.checked = true;
-  info.status = actual === info.ecountQty ? 'match' : 'mismatch';
-
-  beepComplete();
-  speak(info.status === 'match' ? '일치' : '불일치. 차이 ' + Math.abs(actual - info.ecountQty) + '개');
-
-  document.getElementById('invLastBadge').innerHTML = info.status === 'match'
-    ? '<span class="text-emerald-500">✓ 일치</span>'
-    : '<span class="text-red-500">✗ 불일치 (' + (actual - info.ecountQty > 0 ? '+' : '') + (actual - info.ecountQty) + ')</span>';
-  const lastScan = document.getElementById('invLastScan');
-  lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + (info.status === 'match' ? ' border-emerald-300' : ' border-red-300');
+  document.getElementById('invLastScanned').textContent = `스캔: ${info.scanned}`;
+  document.getElementById('invLastBadge').innerHTML = `<span class="text-indigo-500">EC:${info.ecountQty}</span>`;
 
   updateInvStats();
   renderInvList();
+  saveInvProgress();
 }
 
 function updateInvStats() {
-  let match = 0, mismatch = 0, unchecked = 0;
-  for (const [, info] of invMap) {
-    if (!info.checked) unchecked++;
-    else if (info.status === 'match') match++;
-    else mismatch++;
-  }
-  document.getElementById('invStatMatch').textContent = match;
-  document.getElementById('invStatMismatch').textContent = mismatch;
-  document.getElementById('invStatUnchecked').textContent = unchecked;
-  document.getElementById('invChecked').textContent = (match + mismatch) + '건 확인';
+  let total = invMap.size, scanned = 0;
+  for (const [, info] of invMap) { if (info.scanned > 0) scanned++; }
+  document.getElementById('invStatTotal').textContent = total;
+  document.getElementById('invStatScanned').textContent = scanned;
+  document.getElementById('invStatRemain').textContent = total - scanned;
+  document.getElementById('invChecked').textContent = '스캔: ' + scanned;
+  const pct = total > 0 ? Math.round((scanned / total) * 100) : 0;
+  document.getElementById('invProgressPct').textContent = pct + '%';
+  document.getElementById('invProgressBar').style.width = pct + '%';
 }
 
 function renderInvList() {
-  // 필터 버튼 스타일
-  ['All','Checked','Mismatch','Unchecked'].forEach(f => {
-    const btn = document.getElementById('invFilter' + f);
-    const active = invFilter === f.toLowerCase();
-    btn.className = 'px-3 py-1 rounded-full text-xs font-semibold ' + (active ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500');
-  });
-
   const el = document.getElementById('invList');
-  let entries = Array.from(invMap.entries());
-
-  if (invFilter === 'checked') entries = entries.filter(([,v]) => v.checked);
-  else if (invFilter === 'mismatch') entries = entries.filter(([,v]) => v.status === 'mismatch');
-  else if (invFilter === 'unchecked') entries = entries.filter(([,v]) => !v.checked);
-
-  // 정렬: 불일치 먼저, 미확인, 일치 순
-  entries.sort((a,b) => {
-    const order = { mismatch: 0, unchecked: 1, match: 2 };
-    return (order[a[1].status] || 1) - (order[b[1].status] || 1);
+  const entries = Array.from(invMap.entries()).sort((a,b) => {
+    // 스캔 안 된 것 먼저
+    const aD = a[1].scanned > 0 ? 1 : 0;
+    const bD = b[1].scanned > 0 ? 1 : 0;
+    if (aD !== bD) return aD - bD;
+    return a[0].localeCompare(b[0]);
   });
 
-  if (!entries.length) {
-    el.innerHTML = '<div class="text-center text-slate-400 py-4 text-sm">해당 항목 없음</div>';
-    return;
-  }
+  const pending = entries.filter(([,v]) => v.scanned <= 0);
+  const done = entries.filter(([,v]) => v.scanned > 0);
 
-  el.innerHTML = entries.slice(0, 100).map(([sku, info]) => {
-    let border = 'border-slate-100';
-    let badge = '<span class="text-xs text-slate-400">미확인</span>';
-    if (info.checked) {
-      if (info.status === 'match') {
-        border = 'border-emerald-200';
-        badge = '<span class="text-xs text-emerald-500 font-semibold">✓ 일치</span>';
-      } else {
-        border = 'border-red-200';
-        const diff = info.actualQty - info.ecountQty;
-        badge = `<span class="text-xs text-red-500 font-semibold">✗ ${diff > 0 ? '+' : ''}${diff}</span>`;
-      }
-    }
-    return `<div onclick="invSelectItem('${sku}')" class="flex items-center gap-2 p-2.5 bg-white rounded-xl border ${border} active:opacity-70 cursor-pointer">
+  let html = pending.map(([sku, info]) => {
+    const si = skuInfoMap[sku] || {};
+    const img = si.imageUrl ? `<img src="${si.imageUrl}" class="w-10 h-10 rounded-lg object-cover">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center"><i class="fa-solid fa-box text-slate-300 text-xs"></i></div>`;
+    return `<div class="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 sku-none">
+      ${img}
       <div class="flex-1 min-w-0">
         <div class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</div>
         <div class="text-[11px] text-slate-400 truncate">${info.name}</div>
       </div>
       <div class="text-right shrink-0">
-        <div class="text-xs text-slate-400">EC: <span class="font-bold text-indigo-600">${info.ecountQty}</span>${info.checked ? ' → <span class="font-bold">' + info.actualQty + '</span>' : ''}</div>
-        ${badge}
+        <div class="text-xs text-slate-400">EC: <span class="font-bold text-indigo-600">${info.ecountQty}</span></div>
+        <div class="text-xs text-slate-300">미스캔</div>
       </div>
     </div>`;
   }).join('');
+
+  if (done.length > 0) {
+    html += `<details open class="mt-2"><summary class="text-xs text-emerald-600 font-semibold cursor-pointer py-1">스캔완료 ${done.length}건</summary>
+      <div class="space-y-1 mt-1">${done.map(([sku, info]) => {
+        const diff = info.scanned - (typeof info.ecountQty === 'number' ? info.ecountQty : 0);
+        let diffLabel = '', diffColor = 'text-emerald-500';
+        if (diff === 0) { diffLabel = '일치'; diffColor = 'text-emerald-500'; }
+        else if (diff > 0) { diffLabel = '+' + diff + ' 과잉'; diffColor = 'text-blue-500'; }
+        else { diffLabel = diff + ' 부족'; diffColor = 'text-red-500'; }
+        return `<div class="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg text-xs">
+          <span class="font-mono font-bold text-slate-500">${sku}</span>
+          <span class="text-slate-400 truncate flex-1">${info.name}</span>
+          <span class="font-bold text-indigo-500">EC:${info.ecountQty}</span>
+          <span class="font-bold text-emerald-600">→${info.scanned}</span>
+          <span class="font-bold ${diffColor}">${diffLabel}</span>
+        </div>`;
+      }).join('')}</div></details>`;
+  }
+  el.innerHTML = html;
 }
 
-function invSelectItem(sku) {
-  handleInvScan(sku);
+function completeInventoryCheck() {
+  if (!invMap.size) return;
+  let unscanned = 0;
+  for (const [, info] of invMap) { if (info.scanned <= 0) unscanned++; }
+  if (unscanned > 0 && !confirm(`미스캔 ${unscanned}건이 있습니다.\n실사를 완료하시겠습니까?`)) return;
+
+  stopInvScanner();
+
+  // 결과 계산
+  let matchCount = 0, shortCount = 0, overCount = 0;
+  const resultRows = [];
+  for (const [sku, info] of invMap) {
+    const ecQty = typeof info.ecountQty === 'number' ? info.ecountQty : 0;
+    const diff = info.scanned - ecQty;
+    let status = '일치';
+    if (diff < 0) { status = '부족'; shortCount++; }
+    else if (diff > 0) { status = '과잉'; overCount++; }
+    else { matchCount++; }
+    resultRows.push({ sku, name: info.name, ecountQty: ecQty, actual: info.scanned, diff, status });
+  }
+
+  // TTS 음성안내
+  speak(`실사 완료. 총 ${invMap.size}종. 일치 ${matchCount}건, 부족 ${shortCount}건, 과잉 ${overCount}건.`);
+  beepComplete();
+
+  // 결과 화면 표시
+  document.getElementById('invSession').classList.add('hidden');
+  document.getElementById('invResult').classList.remove('hidden');
+  document.getElementById('invResMatch').textContent = matchCount;
+  document.getElementById('invResShort').textContent = shortCount;
+  document.getElementById('invResOver').textContent = overCount;
+
+  const listEl = document.getElementById('invResultList');
+  // 부족 먼저, 과잉, 일치 순
+  resultRows.sort((a,b) => {
+    const order = { '부족': 0, '과잉': 1, '일치': 2 };
+    return (order[a.status] || 2) - (order[b.status] || 2);
+  });
+  listEl.innerHTML = resultRows.map(r => {
+    let border = 'border-emerald-200', bgColor = 'bg-emerald-50', icon = '✓', statusColor = 'text-emerald-600';
+    if (r.status === '부족') { border = 'border-red-200'; bgColor = 'bg-red-50'; icon = '▼'; statusColor = 'text-red-600'; }
+    else if (r.status === '과잉') { border = 'border-blue-200'; bgColor = 'bg-blue-50'; icon = '▲'; statusColor = 'text-blue-600'; }
+    return `<div class="flex items-center gap-2 p-2.5 ${bgColor} rounded-xl border ${border}">
+      <div class="flex-1 min-w-0">
+        <div class="font-mono text-xs font-bold text-slate-700">${r.sku}</div>
+        <div class="text-[11px] text-slate-400 truncate">${r.name}</div>
+      </div>
+      <div class="text-right shrink-0 text-xs">
+        <div>EC: <span class="font-bold">${r.ecountQty}</span> → 실물: <span class="font-bold">${r.actual}</span></div>
+        <div class="font-bold ${statusColor}">${icon} ${r.status} ${r.diff !== 0 ? '(' + (r.diff > 0 ? '+' : '') + r.diff + ')' : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 서버에 실사결과 저장 (PC에서 조회용)
+  saveInvResult(resultRows);
+}
+
+function saveInvProgress() {
+  if (!_invCurrentSession || !invMap.size) return;
+  clearTimeout(window._saveInvTimer);
+  window._saveInvTimer = setTimeout(() => {
+    const details = [];
+    for (const [sku, info] of invMap) {
+      if (info.scanned > 0) details.push({ sku, skuName: info.name, ecountQty: info.ecountQty, scanned: info.scanned });
+    }
+    if (!details.length) return;
+    api('saveInventoryCheck', { uploadTimestamp: _invCurrentSession, details, completed: false })
+      .catch(e => console.warn('[실사저장] 에러:', e));
+  }, 1500);
+}
+
+function saveInvResult(resultRows) {
+  if (!_invCurrentSession) return;
+  const details = resultRows.map(r => ({ sku: r.sku, skuName: r.name, ecountQty: r.ecountQty, scanned: r.actual, diff: r.diff, status: r.status }));
+  api('saveInventoryCheck', { uploadTimestamp: _invCurrentSession, details, completed: true })
+    .then(r => { if (!r || !r.ok) console.warn('[실사결과저장] 실패:', r); })
+    .catch(e => console.warn('[실사결과저장] 에러:', e));
 }
 
 function invManualInput() {
@@ -1635,7 +1717,6 @@ function startInvScanner() {
     const code = result.codeResult.code;
     if (!code || _invScanPaused) return;
     if (code.length < 4) return;
-    // confidence
     const errors = result.codeResult.decodedCodes;
     if (errors && errors.length) {
       const errsWithVal = errors.filter(c => c.error !== undefined);
@@ -1643,21 +1724,17 @@ function startInvScanner() {
       const avgErr = errsWithVal.reduce((s, c) => s + c.error, 0) / errsWithVal.length;
       if (avgErr > 0.12) return;
     }
-    // EAN-13 checksum
     if (/^\d{13}$/.test(code)) {
       const digits = code.split('').map(Number);
       const checksum = digits.slice(0, 12).reduce((sum, d, i) => sum + d * (i % 2 === 0 ? 1 : 3), 0);
       if ((10 - (checksum % 10)) % 10 !== digits[12]) return;
     }
-    // 2회 연속 동일
     if (_invPendingCode === code) { _invPendingCount++; } else { _invPendingCode = code; _invPendingCount = 1; }
     if (_invPendingCount < 2) return;
     _invPendingCount = 0; _invPendingCode = '';
-    // 쿨다운
     const now = Date.now();
     if (code === _invLastCode && now - _invLastTime < 3000) return;
     _invLastCode = code; _invLastTime = now;
-
     _invScanPaused = true;
     handleInvScan(code);
     setTimeout(() => { _invScanPaused = false; }, 1000);
@@ -1668,19 +1745,19 @@ function stopInvScanner() {
   if (!invScannerRunning) return;
   try { Quagga.stop(); Quagga.offDetected(); } catch(e){}
   invScannerRunning = false;
-  document.getElementById('btnInvStopScan').classList.add('hidden');
+  const btn = document.getElementById('btnInvStopScan');
+  if (btn) btn.classList.add('hidden');
 }
 
 function exportInventoryResult() {
   if (!invMap.size) return;
-  // XLSX 내보내기
   const rows = [['SKU코드', '품목명', '이카운트재고', '실물수량', '차이', '상태']];
   for (const [sku, info] of invMap) {
-    if (!info.checked) continue;
-    const diff = info.actualQty - info.ecountQty;
-    rows.push([sku, info.name, info.ecountQty, info.actualQty, diff, info.status === 'match' ? '일치' : '불일치']);
+    const ecQty = typeof info.ecountQty === 'number' ? info.ecountQty : 0;
+    const diff = info.scanned - ecQty;
+    const status = diff === 0 ? '일치' : (diff < 0 ? '부족' : '과잉');
+    rows.push([sku, info.name, ecQty, info.scanned, diff, status]);
   }
-  if (rows.length <= 1) { alert('확인된 항목이 없습니다.'); return; }
   const ws = XLSX.utils.aoa_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '재고실사');
