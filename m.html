@@ -683,28 +683,16 @@ function flushPickingToServer() {
     details.push({ sku, skuName: info.name, target: info.target, picked: info.picked, hold: !!info.hold });
   }
   const ts = currentSession;
-  console.log('[피킹저장] 전송:', ts, details.length + '종');
+  // 변경된 것만 전송 (picked>0 또는 hold)
+  const sendDetails = details.filter(d => d.picked > 0 || d.hold);
+  console.log('[피킹저장] 전송:', ts, sendDetails.length + '/' + details.length + '종');
 
-  // 화면에 저장 상태 표시
-  const el = document.getElementById('lastScanResult');
-  el.classList.remove('hidden');
-  el.innerHTML = '<div class="text-xs text-slate-400 text-center py-1"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>서버 저장 중...</div>';
-
-  api('savePickingDetail', { uploadTimestamp: ts, details })
+  api('savePickingDetail', { uploadTimestamp: ts, details: sendDetails })
     .then(r => {
       console.log('[피킹저장] 응답:', JSON.stringify(r));
-      if (r && r.ok) {
-        el.innerHTML = '<div class="text-xs text-emerald-500 text-center py-1"><i class="fa-solid fa-check mr-1"></i>서버 저장 완료 (' + details.length + '종)</div>';
-      } else {
-        el.innerHTML = '<div class="text-xs text-red-500 text-center py-1"><i class="fa-solid fa-xmark mr-1"></i>저장 실패: ' + (r ? r.error : '응답없음') + '</div>';
-      }
-      setTimeout(() => el.classList.add('hidden'), 3000);
+      if (!r || !r.ok) console.warn('[피킹저장] 실패:', r);
     })
-    .catch(e => {
-      console.warn('[피킹저장] 실패:', e);
-      el.innerHTML = '<div class="text-xs text-red-500 text-center py-1"><i class="fa-solid fa-xmark mr-1"></i>저장 실패: ' + e.message + '</div>';
-      setTimeout(() => el.classList.add('hidden'), 5000);
-    });
+    .catch(e => console.warn('[피킹저장] 에러:', e));
 }
 
 // ── 강제 피킹완료 ──
