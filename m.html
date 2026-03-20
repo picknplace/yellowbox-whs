@@ -677,6 +677,7 @@ function quickComplete(sku) {
 }
 
 function flushPickingToServer() {
+  alert('[디버그] flush 호출됨. session=' + (currentSession||'없음') + ', skuMap=' + skuMap.size);
   if (!currentSession || !skuMap.size) return;
   clearTimeout(window._saveDetailTimer);
   const details = [];
