@@ -2152,6 +2152,8 @@ async function smartDirectoryPicker() {
         gasRun("serverGetPickingDetail", uploadTs)
       ]);
 
+      alert('[PC디버그] pickResult=' + JSON.stringify(pickResult).substring(0, 300));
+
       if (!orderResult || !orderResult.ok) {
         inlineEl.innerHTML = '<div class="text-sm text-red-400">주문 데이터 로드 실패</div>';
         return;
