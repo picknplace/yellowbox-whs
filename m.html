@@ -18,8 +18,8 @@
     .tab-active { background: #4f46e5; color: white; }
     .tab-inactive { background: #e2e8f0; color: #64748b; }
     .scan-box { position:absolute; top:20%; left:5%; width:90%; height:60%; border:2px solid rgba(239,68,68,0.85); border-radius:8px; pointer-events:none; box-shadow: 0 0 10px rgba(239,68,68,0.4), 0 0 0 9999px rgba(0,0,0,0.4); z-index:10; }
-    #scannerViewport, #scannerViewport > .viewport { overflow:hidden !important; width:100% !important; height:280px !important; position:relative !important; }
-    #scannerViewport video, #scannerViewport canvas, #scannerViewport .drawingBuffer { position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:280px !important; max-height:280px !important; object-fit:cover !important; }
+    #scannerViewport, #scannerViewport > .viewport { overflow:hidden !important; width:100% !important; height:200px !important; position:relative !important; }
+    #scannerViewport video, #scannerViewport canvas, #scannerViewport .drawingBuffer { position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:200px !important; max-height:200px !important; object-fit:cover !important; }
     @keyframes scanPulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
     .sku-done { border-left: 4px solid #10b981; }
     .sku-partial { border-left: 4px solid #f59e0b; }
@@ -112,9 +112,9 @@
     </div>
 
     <!-- 바코드 스캐너 -->
-    <div id="scannerArea" class="hidden mb-3" style="position:sticky; top:0; z-index:50; background:#f5f7fa;">
-      <div class="rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/30 overflow-hidden">
-        <div id="scannerViewport" style="width:100%; height:280px; background:#111; position:relative;">
+    <div id="scannerArea" class="hidden mb-2" style="position:sticky; top:0; z-index:50; background:#f5f7fa; padding-bottom:4px;">
+      <div class="rounded-xl border border-indigo-300 overflow-hidden">
+        <div id="scannerViewport" style="width:100%; height:200px; background:#111; position:relative;">
           <div class="scan-box"></div>
         </div>
       </div>
@@ -137,23 +137,15 @@
       </div>
     </div>
 
-    <!-- 마지막 스캔 결과 -->
-    <div id="lastScanResult" class="hidden rounded-2xl border border-slate-200 bg-white p-3 mb-3 shadow-sm">
-      <div class="flex items-center gap-3">
-        <div id="lastScanImg" class="w-16 h-16 rounded-xl bg-slate-100 flex items-center justify-center overflow-hidden shrink-0">
-          <i class="fa-solid fa-image text-slate-300 text-xl"></i>
-        </div>
-        <div class="flex-1 min-w-0">
-          <div id="lastScanSku" class="font-mono font-bold text-base text-slate-800"></div>
-          <div id="lastScanName" class="text-xs text-slate-500 truncate"></div>
-          <div class="flex items-center gap-2 mt-0.5">
-            <span id="lastScanPicked" class="text-sm font-semibold text-emerald-600"></span>
-            <span id="lastScanTarget" class="text-xs text-slate-400"></span>
-          </div>
-        </div>
-        <div id="lastScanBadge" class="text-2xl font-bold"></div>
-      </div>
+    <!-- 마지막 스캔 결과 (간소화: 한 줄 표시) -->
+    <div id="lastScanResult" class="hidden rounded-lg bg-white border border-slate-200 px-3 py-1.5 mb-2 shadow-sm">
+      <span id="lastScanSku" class="font-mono font-bold text-sm text-slate-800"></span>
+      <span id="lastScanName" class="text-xs text-slate-400 ml-1"></span>
+      <span id="lastScanPicked" class="text-sm font-semibold text-emerald-600 ml-2"></span>
+      <span id="lastScanTarget" class="text-xs text-slate-400 ml-1"></span>
+      <span id="lastScanBadge" class="text-sm font-bold ml-1"></span>
     </div>
+    <div id="lastScanImg" class="hidden"></div>
 
     <!-- SKU 리스트 -->
     <div id="skuList" class="space-y-1.5 max-h-[45vh] overflow-y-auto"></div>
