@@ -2153,6 +2153,9 @@ async function smartDirectoryPicker() {
     _pickStatusSession = uploadTs;
     const metaEl = document.getElementById("pickStatusMeta");
     const detailEl = document.getElementById("pickStatusDetail");
+    const sessWrap = document.getElementById("pickStatusSessions");
+    // 세션 목록 숨기고 상세 자리에 표시
+    sessWrap.classList.add("hidden");
     metaEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-2"></i>피킹 상세 로드 중...';
     detailEl.classList.add("hidden");
 
@@ -2203,7 +2206,7 @@ async function smartDirectoryPicker() {
       // 현황 업데이트
       const dt = new Date(uploadTs);
       const label = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
-      metaEl.innerHTML = `<span class="font-semibold text-indigo-600">${label}</span> · ${allRows.length}건 · SKU ${skuTargetMap.size}종 <button onclick="document.getElementById('btnPickingStatus').click()" class="text-xs text-slate-400 underline ml-2">← 세션 목록</button>`;
+      metaEl.innerHTML = `<span class="font-semibold text-indigo-600">${label}</span> · ${allRows.length}건 · SKU ${skuTargetMap.size}종 <button onclick="document.getElementById('pickStatusSessions').classList.remove('hidden');document.getElementById('pickStatusDetail').classList.add('hidden');document.getElementById('pickStatusMeta').textContent='피킹현황을 볼 세션을 선택하세요.';" class="text-xs text-slate-400 underline ml-2">← 세션 목록</button>`;
 
       document.getElementById("psStatDone").textContent = doneCnt;
       document.getElementById("psStatPartial").textContent = partialCnt;
