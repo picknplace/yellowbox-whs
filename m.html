@@ -537,8 +537,12 @@ function handleScan(code) {
     beepComplete();
     let allDone = true;
     for (const [, v] of skuMap) { if (v.picked < v.target) { allDone = false; break; } }
-    if (allDone) speak('전체 피킹 완료');
-    else speak('스캔 완료');
+    if (allDone) {
+      speak('전체 피킹 완료. 오늘도 수고하셨습니다.');
+      setTimeout(() => alert('전체 피킹 완료!\n오늘도 수고하셨습니다.'), 500);
+    } else {
+      speak(`${info.target}개 스캔 완료. 다음 스큐로 넘어갑니다.`);
+    }
   } else {
     beepOk();
     speak(`성공. ${remain}개 남음`);
@@ -581,6 +585,46 @@ function handleScan(code) {
 function manualInput() {
   const code = prompt('SKU 코드를 입력하세요:');
   if (code && code.trim()) handleScan(code.trim());
+}
+
+// ── SKU 스와이프 액션 ──
+function cancelSku(sku) {
+  if (!skuMap.has(sku)) return;
+  const info = skuMap.get(sku);
+  if (info.picked <= 0) return;
+  info.picked = 0;
+  speak('스캔 취소');
+  renderSkuList();
+  updateStats();
+  savePickingProgress();
+}
+
+function holdSku(sku) {
+  if (!skuMap.has(sku)) return;
+  const info = skuMap.get(sku);
+  info.hold = true;
+  speak('보류 처리');
+  renderSkuList();
+  updateStats();
+  savePickingProgress();
+}
+
+function unholdSku(sku) {
+  if (!skuMap.has(sku)) return;
+  skuMap.get(sku).hold = false;
+  renderSkuList();
+  updateStats();
+  savePickingProgress();
+}
+
+function rollbackSku(sku) {
+  if (!skuMap.has(sku)) return;
+  const info = skuMap.get(sku);
+  info.picked = 0;
+  speak('피킹 취소');
+  renderSkuList();
+  updateStats();
+  savePickingProgress();
 }
 
 // ── SKU별 퀵 완료 ──
@@ -750,24 +794,10 @@ function startScanner() {
     if (code === _lastCode && now - _lastTime < 3000) return;
     _lastCode = code; _lastTime = now;
 
-    // 스캔 일시정지 + 블랙화면 1초
+    // 스캔 일시정지 1초 (비디오는 건드리지 않음 — 화이트스크린 방지)
     _scanPaused = true;
-    const vp = document.getElementById('scannerViewport');
-    const videoEl = vp.querySelector('video');
-    if (videoEl) { videoEl.style.opacity = '0'; videoEl.style.transition = 'none'; }
-    vp.style.background = '#000';
-
     handleScan(code);
-
-    setTimeout(() => {
-      try {
-        const vp2 = document.getElementById('scannerViewport');
-        const vid = vp2 ? vp2.querySelector('video') : null;
-        if (vid) { vid.style.opacity = '1'; }
-        if (vp2) vp2.style.background = 'transparent';
-      } catch(e) { console.warn('스캔 복원 오류:', e); }
-      _scanPaused = false;
-    }, 1000);
+    setTimeout(() => { _scanPaused = false; }, 1000);
   });
 }
 
@@ -886,14 +916,25 @@ function renderSkuList(highlightSku) {
   const pending = entries.filter(([,info]) => info.picked < info.target);
   const doneList = entries.filter(([,info]) => info.picked >= info.target);
 
-  let html = pending.map(([sku, info]) => {
+  // 보류 목록
+  const holdList = entries.filter(([,info]) => info.hold);
+  const pendingActive = pending.filter(([,info]) => !info.hold);
+
+  let html = '';
+
+  // 보류 건 알림
+  if (holdList.length > 0) {
+    html += `<div class="bg-amber-50 border border-amber-300 rounded-xl p-2 mb-2 text-xs text-amber-700"><i class="fa-solid fa-clock mr-1"></i>보류 ${holdList.length}건 (수량부족 미출고)</div>`;
+  }
+
+  html += pendingActive.map(([sku, info]) => {
     const partial = info.picked > 0;
     const cls = partial ? 'sku-partial' : 'sku-none';
     const tag = info.isMulti ? '<span class="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 font-bold">합포</span>' : '<span class="text-[9px] px-1 py-0.5 rounded bg-slate-100 text-slate-400">단포</span>';
     const img = info.imgUrl ? `<img src="${info.imgUrl}" class="w-10 h-10 rounded-lg object-cover cursor-pointer" onclick="event.stopPropagation();showImageOverlay('${info.imgUrl}')">` : `<div class="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center cursor-pointer" onclick="event.stopPropagation();captureSkuImage('${sku}')"><i class="fa-solid fa-camera text-slate-300 text-xs"></i></div>`;
     const barcodeStr = info.barcode ? `<span class="text-[10px] text-slate-300 ml-1">BC:${info.barcode}</span>` : '';
     const rackStr = info.rack ? `<span class="text-[10px] text-blue-400 ml-1">📍${info.rack}</span>` : '';
-    return `<div data-sku="${sku}" class="flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}">
+    return `<div data-sku="${sku}" class="sku-swipe flex items-center gap-2.5 p-2.5 bg-white rounded-xl border border-slate-100 ${cls}" style="transition:transform 0.2s;touch-action:pan-y;">
       ${img}
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-1"><span class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</span>${tag}</div>
@@ -907,17 +948,45 @@ function renderSkuList(highlightSku) {
     </div>`;
   }).join('');
 
-  // 완료된 SKU는 접힌 섹션으로 표시
+  // 보류 SKU 섹션
+  if (holdList.length > 0) {
+    html += `<details class="mt-2"><summary class="text-xs text-amber-600 font-semibold cursor-pointer py-1"><i class="fa-solid fa-pause-circle mr-1"></i>보류 ${holdList.length}건</summary>
+      <div class="space-y-1 mt-1">${holdList.map(([sku, info]) => `<div class="flex items-center gap-2 p-2 bg-amber-50 rounded-lg text-xs">
+        <span class="font-mono font-bold text-slate-500">${sku}</span>
+        <span class="text-slate-400 truncate flex-1">${info.name}</span>
+        <span class="text-amber-500 font-bold">${info.picked}/${info.target}</span>
+        <button onclick="event.stopPropagation();unholdSku('${sku}')" class="px-1.5 py-0.5 rounded bg-indigo-500 text-white text-[9px]">복원</button>
+      </div>`).join('')}</div></details>`;
+  }
+
+  // 완료 SKU 섹션 (피킹취소 기능 포함)
   if (doneList.length > 0) {
     html += `<details class="mt-2"><summary class="text-xs text-emerald-600 font-semibold cursor-pointer py-1">완료 ${doneList.length}건</summary>
-      <div class="space-y-1 mt-1">${doneList.map(([sku, info]) => `<div class="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg opacity-60 text-xs">
+      <div class="space-y-1 mt-1">${doneList.map(([sku, info]) => `<div class="flex items-center gap-2 p-2 bg-emerald-50 rounded-lg text-xs">
         <span class="font-mono font-bold text-slate-500">${sku}</span>
         <span class="text-slate-400 truncate flex-1">${info.name}</span>
         <span class="text-emerald-500 font-bold">${info.picked}/${info.target} ✓</span>
+        <button onclick="event.stopPropagation();rollbackSku('${sku}')" class="px-1.5 py-0.5 rounded bg-slate-400 text-white text-[9px]">취소</button>
       </div>`).join('')}</div></details>`;
   }
 
   el.innerHTML = html;
+
+  // 스와이프 제스처 등록
+  el.querySelectorAll('.sku-swipe').forEach(div => {
+    let startX = 0, dx = 0;
+    div.addEventListener('touchstart', e => { startX = e.touches[0].clientX; dx = 0; }, {passive:true});
+    div.addEventListener('touchmove', e => {
+      dx = e.touches[0].clientX - startX;
+      if (Math.abs(dx) > 10) div.style.transform = `translateX(${dx * 0.5}px)`;
+    }, {passive:true});
+    div.addEventListener('touchend', () => {
+      div.style.transform = '';
+      const sku = div.dataset.sku;
+      if (dx < -80) { cancelSku(sku); } // 왼쪽 스와이프 = 취소
+      else if (dx > 80) { holdSku(sku); } // 오른쪽 스와이프 = 보류
+    });
+  });
 }
 
 let _pickingSaved = false;
