@@ -4022,7 +4022,9 @@ async function smartDirectoryPicker() {
     wrap.classList.remove("hidden");
     document.getElementById("ecountStatusIcon").className = icon;
     document.getElementById("ecountStatusText").textContent = text;
-    document.getElementById("ecountStatusDetail").textContent = detail||"";
+    const detailEl = document.getElementById("ecountStatusDetail");
+    detailEl.style.whiteSpace = 'pre-wrap';
+    detailEl.textContent = detail||"";
   }
 
   function renderEcountLog(){
@@ -4256,13 +4258,16 @@ async function smartDirectoryPicker() {
         const msg = `순번${seqNo} - 성공 ${sCnt}건, 실패 ${fCnt}건`;
 
         if (fCnt > 0) {
-          ecountSetStatus("fa-solid fa-triangle-exclamation text-amber-500", msg, `${timeStr} — 실패 건을 수정 후 재전송하세요`);
-
+          // 실패 원인 추출
+          let failReasons = [];
           const failIndices = new Set();
           if (Array.isArray(details)) {
             details.forEach((d, i) => {
               if (d && (d.IsSuccess === false || d.Result === "Fail" || d.ErrorMessage)) {
                 failIndices.add(i);
+                const reason = d.ErrorMessage || d.Message || '';
+                const prod = selectedList[i] ? selectedList[i].ProdCode : '';
+                if (reason) failReasons.push(`${prod}: ${reason}`);
               }
             });
           }
@@ -4270,10 +4275,15 @@ async function smartDirectoryPicker() {
             ? selectedList.filter((_, i) => failIndices.has(i))
             : selectedList;
 
+          const reasonText = failReasons.length > 0
+            ? failReasons.slice(0, 10).join('\n')
+            : '상세 에러 없음 (동일 순번 내 다른 품목 에러로 연쇄 실패 가능)';
+          ecountSetStatus("fa-solid fa-triangle-exclamation text-amber-500", msg, `${timeStr}\n${reasonText}`);
+
           document.getElementById("ecountApiCount").innerHTML =
             `<span class="text-red-500 font-semibold">실패 ${failList.length}건</span> — 아래에서 수정 후 [선택 전송]으로 재전송`;
           renderEcountPreviewTable(failList, { editable: true });
-          console.log("ECOUNT 실패 상세:", details);
+          console.log("ECOUNT 실패 상세:", JSON.stringify(details));
         } else {
           ecountSetStatus("fa-solid fa-circle-check text-emerald-500", "전송 완료!", `${msg} (${timeStr})`);
           // 성공 시 미리보기 테이블 비우기
