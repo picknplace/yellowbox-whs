@@ -4271,6 +4271,10 @@ async function smartDirectoryPicker() {
           console.log("ECOUNT 실패 상세:", details);
         } else {
           ecountSetStatus("fa-solid fa-circle-check text-emerald-500", "전송 완료!", `${msg} (${timeStr})`);
+          // 성공 시 미리보기 테이블 비우기
+          document.getElementById("ecountApiPreview").innerHTML = '';
+          document.getElementById("ecountApiCount").textContent = '';
+          ecountPreviewList = [];
         }
 
         ecountSendLogs.push({ ok: fCnt===0, date:yyyymmdd, count:selectedList.length, time:timeStr, msg });
