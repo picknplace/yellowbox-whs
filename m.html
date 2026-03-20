@@ -211,6 +211,8 @@ let currentSession = null;
 let skuMap = new Map(); // sku → { name, target, picked, rack }
 let barcodeToSku = new Map(); // barcode → sku (바코드→SKU 매핑)
 let scannerRunning = false;
+let _pickingStartTime = null;
+let _pickingTimerInterval = null;
 let imageCache = {};
 
 // ── 로그인 ──
@@ -349,8 +351,12 @@ async function selectSession(ts) {
     document.getElementById('sessionPicker').innerHTML =
       `<div class="flex items-center justify-between">
         <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-boxes-stacked mr-1"></i>${label} · ${r.rows.length}건 · SKU ${skuMap.size}종 · <span id="pickRateBadge">0%</span></div>
-        <button onclick="resetPicking()" class="text-xs text-slate-400 underline">← 목록</button>
+        <div class="flex items-center gap-2">
+          <span id="pickingTimer" class="text-xs font-mono text-slate-400"><i class="fa-solid fa-stopwatch mr-1"></i>00:00</span>
+          <button onclick="resetPicking()" class="text-xs text-slate-400 underline">← 목록</button>
+        </div>
       </div>`;
+    startPickingTimer();
 
     document.getElementById('pickingStats').classList.remove('hidden');
     document.getElementById('progressWrap').classList.remove('hidden');
@@ -427,6 +433,7 @@ async function restorePickingProgress(ts) {
 }
 
 function resetPicking() {
+  stopPickingTimer();
   currentSession = null;
   skuMap.clear();
   _pickingSaved = false;
@@ -1078,8 +1085,40 @@ function updateStats() {
   }
   if (allQtyDone && !hasHold && total > 0 && !_pickingSaved && currentSession) {
     _pickingSaved = true;
-    api('savePickingLog', { uploadTimestamp: currentSession, rowCount: totalQty, pickedBy: 'mobile_user' }).catch(()=>{});
+    const elapsed = stopPickingTimer();
+    api('savePickingLog', { uploadTimestamp: currentSession, rowCount: totalQty, pickedBy: 'mobile_user', elapsed }).catch(()=>{});
   }
+}
+
+// ── 피킹 타이머 ──
+function startPickingTimer() {
+  _pickingStartTime = Date.now();
+  clearInterval(_pickingTimerInterval);
+  _pickingTimerInterval = setInterval(() => {
+    const el = document.getElementById('pickingTimer');
+    if (!el || !_pickingStartTime) return;
+    el.innerHTML = '<i class="fa-solid fa-stopwatch mr-1"></i>' + formatElapsed(Date.now() - _pickingStartTime);
+  }, 1000);
+}
+
+function stopPickingTimer() {
+  clearInterval(_pickingTimerInterval);
+  _pickingTimerInterval = null;
+  if (!_pickingStartTime) return '';
+  const elapsed = formatElapsed(Date.now() - _pickingStartTime);
+  const el = document.getElementById('pickingTimer');
+  if (el) el.innerHTML = '<i class="fa-solid fa-flag-checkered mr-1 text-emerald-500"></i>' + elapsed;
+  _pickingStartTime = null;
+  return elapsed;
+}
+
+function formatElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
 }
 
 // ── 파일 업로드 ──
