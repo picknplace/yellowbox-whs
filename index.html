@@ -4151,11 +4151,19 @@ async function smartDirectoryPicker() {
     const editable = opts.editable || false;
     const header = ["","#","날짜","거래처명","담당자","품목코드","품목명","수량","적요"];
     let html = "<thead><tr>" + header.map(h => `<th class="text-left">${h}</th>`).join("") + "</tr></thead><tbody>";
+    // 사은품/의심 SKU 감지 (S+8자리이상 영숫자)
+    const isSuspectSku = (code) => /^S[A-Za-z0-9]{8,}$/.test(code);
+    let suspectCount = 0;
+
     saleList.forEach((s, i) => {
-      const bg = opts.failIndices && opts.failIndices.has(i) ? "background:#fef2f2;" : "";
+      const suspect = isSuspectSku(s.ProdCode);
+      if (suspect) suspectCount++;
+      const defaultChecked = suspect ? '' : 'checked';
+      const bg = suspect ? "background:#fef9c3;" : (opts.failIndices && opts.failIndices.has(i) ? "background:#fef2f2;" : "");
+      const warnBadge = suspect ? ' <span class="text-[10px] text-amber-600 font-semibold">⚠사은품?</span>' : '';
       if (editable) {
         html += `<tr style="${bg}">
-          <td><input type="checkbox" class="ecount-row-chk w-4 h-4 accent-orange-500 rounded" data-idx="${i}" checked></td>
+          <td><input type="checkbox" class="ecount-row-chk w-4 h-4 accent-orange-500 rounded" data-idx="${i}" ${defaultChecked}></td>
           <td class="muted">${i+1}</td>
           <td>${s.SaleDate}</td>
           <td><input class="ec-edit rounded border border-slate-200 px-2 py-1 text-sm w-28" data-idx="${i}" data-field="CustName" value="${s.CustName}"></td>
@@ -4167,18 +4175,23 @@ async function smartDirectoryPicker() {
         </tr>`;
       } else {
         html += `<tr style="${bg}">
-          <td><input type="checkbox" class="ecount-row-chk w-4 h-4 accent-orange-500 rounded" data-idx="${i}" checked></td>
+          <td><input type="checkbox" class="ecount-row-chk w-4 h-4 accent-orange-500 rounded" data-idx="${i}" ${defaultChecked}></td>
           <td class="muted">${i+1}</td>
           <td>${s.SaleDate}</td><td>${s.CustName}</td><td>${s.EmpCode}</td>
-          <td class="mono">${s.ProdCode}</td><td>${s.ProdName}</td>
+          <td class="mono">${s.ProdCode}${warnBadge}</td><td>${s.ProdName}</td>
           <td class="font-semibold">${s.Qty}</td><td class="muted">${s.Remark}</td>
         </tr>`;
       }
     });
     html += "</tbody>";
     tbl.innerHTML = html;
-    document.getElementById("ecountSelectAll").checked = true;
+    document.getElementById("ecountSelectAll").checked = (suspectCount === 0);
     updateSelectedCount();
+    if (suspectCount > 0) {
+      document.getElementById("ecountApiCount").innerHTML =
+        (document.getElementById("ecountApiCount").innerHTML || '') +
+        ` <span class="text-amber-600 text-xs">⚠ 사은품 의심 ${suspectCount}건 자동 제외됨 (S+8자리이상)</span>`;
+    }
 
     // 편집 시 ecountPreviewList 실시간 반영
     if (editable) {
