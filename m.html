@@ -18,8 +18,8 @@
     .tab-active { background: #4f46e5; color: white; }
     .tab-inactive { background: #e2e8f0; color: #64748b; }
     .scan-box { position:absolute; top:20%; left:5%; width:90%; height:60%; border:2px solid rgba(239,68,68,0.85); border-radius:8px; pointer-events:none; box-shadow: 0 0 10px rgba(239,68,68,0.4), 0 0 0 9999px rgba(0,0,0,0.4); z-index:10; }
-    #scannerViewport, #scannerViewport > .viewport { overflow:hidden !important; width:100% !important; height:200px !important; position:relative !important; }
-    #scannerViewport video, #scannerViewport canvas, #scannerViewport .drawingBuffer { position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:200px !important; max-height:200px !important; object-fit:cover !important; }
+    #scannerViewport, #scannerViewport > .viewport, #invScannerViewport, #invScannerViewport > .viewport { overflow:hidden !important; width:100% !important; height:200px !important; position:relative !important; }
+    #scannerViewport video, #scannerViewport canvas, #scannerViewport .drawingBuffer, #invScannerViewport video, #invScannerViewport canvas, #invScannerViewport .drawingBuffer { position:absolute !important; top:0 !important; left:0 !important; width:100% !important; height:200px !important; max-height:200px !important; object-fit:cover !important; }
     @keyframes scanPulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
     .sku-done { border-left: 4px solid #10b981; }
     .sku-partial { border-left: 4px solid #f59e0b; }
@@ -36,7 +36,7 @@
     <div class="text-center mb-8">
       <div class="text-5xl mb-3">🍊</div>
       <h1 class="text-xl font-bold text-slate-800">Delluga WHS</h1>
-      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321a</span></p>
+      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321b</span></p>
     </div>
     <input id="loginPw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
     <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
@@ -51,7 +51,7 @@
     <div class="flex items-center gap-2">
       <span class="text-2xl">🍊</span>
       <span class="font-bold text-slate-700 text-lg">WHS</span>
-      <span class="text-[10px] text-slate-300">v0321a</span>
+      <span class="text-[10px] text-slate-300">v0321b</span>
     </div>
     <div class="flex items-center gap-2">
       <a href="/?desktop=1" class="text-xs text-slate-400 underline">PC버전</a>
@@ -60,9 +60,12 @@
   </header>
 
   <!-- 탭 -->
-  <nav class="flex gap-2 p-3 bg-white border-b border-slate-100">
+  <nav class="flex gap-1.5 p-3 bg-white border-b border-slate-100">
     <button id="tabPicking" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-active transition" onclick="switchTab('picking')">
       <i class="fa-solid fa-boxes-stacked mr-1"></i>피킹
+    </button>
+    <button id="tabInventory" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition" onclick="switchTab('inventory')">
+      <i class="fa-solid fa-clipboard-check mr-1"></i>실사
     </button>
     <button id="tabUpload" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition" onclick="switchTab('upload')">
       <i class="fa-solid fa-cloud-arrow-up mr-1"></i>업로드
@@ -155,6 +158,117 @@
     <div id="skuList" class="space-y-1.5 max-h-[45vh] overflow-y-auto"></div>
 
     <!-- 전체 피킹완료 (하단 제거, SKU별 완료버튼으로 대체) -->
+  </div>
+
+  <!-- 재고실사 탭 -->
+  <div id="viewInventory" class="p-3 hidden">
+    <!-- 실사 시작 전 -->
+    <div id="invStart">
+      <div class="bg-white rounded-2xl p-4 border border-slate-100 mb-3">
+        <div class="text-sm font-semibold text-slate-600 mb-2"><i class="fa-solid fa-warehouse mr-1"></i>재고실사</div>
+        <p class="text-xs text-slate-400 mb-3">이카운트 재고를 불러와 바코드 스캔으로 실물 수량을 확인합니다.</p>
+        <div class="flex items-center gap-2 mb-3">
+          <label class="text-xs text-slate-500">기준일:</label>
+          <input id="invDate" type="date" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        </div>
+        <button id="btnLoadInv" onclick="loadInventoryData()" class="w-full py-3 rounded-xl bg-indigo-500 text-white font-semibold active:bg-indigo-600">
+          <i class="fa-solid fa-download mr-1"></i>재고 불러오기
+        </button>
+        <div id="invLoadStatus" class="mt-2 text-xs text-center text-slate-400"></div>
+      </div>
+    </div>
+
+    <!-- 실사 진행 중 -->
+    <div id="invSession" class="hidden">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm font-semibold text-indigo-600"><i class="fa-solid fa-clipboard-check mr-1"></i>재고실사 · <span id="invCount">0</span>종</div>
+        <div class="flex items-center gap-2">
+          <span id="invChecked" class="text-xs text-emerald-500 font-semibold">0건 확인</span>
+          <button onclick="resetInventory()" class="text-xs text-slate-400 underline">← 초기화</button>
+        </div>
+      </div>
+
+      <!-- 실사 현황 바 -->
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-2 text-center">
+          <div class="text-[10px] text-emerald-500 font-semibold">일치</div>
+          <div id="invStatMatch" class="text-lg font-bold text-emerald-600">0</div>
+        </div>
+        <div class="rounded-xl bg-red-50 border border-red-200 p-2 text-center">
+          <div class="text-[10px] text-red-500 font-semibold">불일치</div>
+          <div id="invStatMismatch" class="text-lg font-bold text-red-600">0</div>
+        </div>
+        <div class="rounded-xl bg-slate-50 border border-slate-200 p-2 text-center">
+          <div class="text-[10px] text-slate-500 font-semibold">미확인</div>
+          <div id="invStatUnchecked" class="text-lg font-bold text-slate-600">0</div>
+        </div>
+      </div>
+
+      <!-- 바코드 스캐너 -->
+      <div class="mb-2" style="position:sticky; top:0; z-index:50; background:#f5f7fa; padding-bottom:4px;">
+        <div class="rounded-xl border border-indigo-300 overflow-hidden">
+          <div id="invScannerViewport" onclick="if(!invScannerRunning)startInvScanner()" style="width:100%; height:200px; background:#111; position:relative; cursor:pointer;">
+            <div class="scan-box"></div>
+            <div id="invScannerTapHint" class="absolute inset-0 flex items-center justify-center text-white text-sm font-semibold" style="z-index:11; pointer-events:none;">
+              <span class="bg-black/60 px-4 py-2 rounded-xl"><i class="fa-solid fa-hand-pointer mr-1"></i>터치하여 스캔 시작</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-center gap-2 py-2">
+          <button id="btnInvStopScan" class="px-4 py-2 rounded-xl bg-slate-400 text-white text-sm font-semibold hidden" onclick="stopInvScanner()">
+            <i class="fa-solid fa-stop mr-1"></i>중지
+          </button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="invManualInput()">
+            <i class="fa-solid fa-keyboard mr-1"></i>SKU입력
+          </button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200 text-slate-600 text-sm font-semibold" onclick="invPhotoScan()">
+            <i class="fa-solid fa-camera mr-1"></i>촬영
+          </button>
+        </div>
+      </div>
+
+      <!-- 마지막 스캔 결과 -->
+      <div id="invLastScan" class="hidden rounded-xl bg-white border-2 p-3 mb-2 shadow-sm">
+        <div class="flex items-center justify-between mb-1">
+          <span id="invLastSku" class="font-mono font-bold text-sm text-slate-800"></span>
+          <span id="invLastBadge" class="text-sm font-bold"></span>
+        </div>
+        <div id="invLastName" class="text-xs text-slate-400 mb-2"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="text-center p-2 rounded-lg bg-slate-50">
+            <div class="text-[10px] text-slate-400">이카운트 재고</div>
+            <div id="invLastEcount" class="text-lg font-bold text-indigo-600">0</div>
+          </div>
+          <div class="text-center p-2 rounded-lg bg-slate-50">
+            <div class="text-[10px] text-slate-400">실물 수량</div>
+            <div class="flex items-center justify-center gap-1">
+              <button onclick="invAdjustQty(-1)" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 text-sm font-bold active:bg-slate-300">−</button>
+              <input id="invLastActual" type="number" class="w-14 text-center text-lg font-bold border border-slate-200 rounded-lg py-1" value="0" onchange="invUpdateActual()">
+              <button onclick="invAdjustQty(1)" class="w-7 h-7 rounded-full bg-slate-200 text-slate-600 text-sm font-bold active:bg-slate-300">+</button>
+            </div>
+          </div>
+        </div>
+        <button onclick="invConfirmItem()" class="w-full mt-2 py-2 rounded-xl bg-emerald-500 text-white text-sm font-semibold active:bg-emerald-600">
+          <i class="fa-solid fa-check mr-1"></i>확인 완료
+        </button>
+      </div>
+
+      <!-- 필터 -->
+      <div class="flex gap-1.5 mb-2">
+        <button onclick="invFilter='all';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterAll">전체</button>
+        <button onclick="invFilter='checked';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterChecked">확인됨</button>
+        <button onclick="invFilter='mismatch';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterMismatch">불일치</button>
+        <button onclick="invFilter='unchecked';renderInvList()" class="px-3 py-1 rounded-full text-xs font-semibold" id="invFilterUnchecked">미확인</button>
+      </div>
+
+      <!-- 재고 리스트 -->
+      <div id="invList" class="space-y-1.5 max-h-[40vh] overflow-y-auto"></div>
+
+      <!-- 결과 내보내기 -->
+      <button onclick="exportInventoryResult()" class="w-full mt-3 py-2.5 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600">
+        <i class="fa-solid fa-file-arrow-down mr-1"></i>실사결과 내보내기
+      </button>
+    </div>
   </div>
 
   <!-- 업로드 탭 -->
@@ -254,13 +368,14 @@ document.getElementById('btnLogout').onclick = () => {
 
 // ── 탭 전환 ──
 function switchTab(tab) {
-  ['picking','upload','status'].forEach(t => {
+  ['picking','inventory','upload','status'].forEach(t => {
     document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).className =
       'flex-1 py-2 rounded-lg text-sm font-semibold transition ' + (t === tab ? 'tab-active' : 'tab-inactive');
     document.getElementById('view' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
   });
   if (tab === 'status') loadStatus();
   if (tab !== 'picking' && scannerRunning) stopScanner();
+  if (tab !== 'inventory' && invScannerRunning) stopInvScanner();
 }
 
 // ── 세션 목록 ──
@@ -1231,6 +1346,349 @@ async function loadStatus() {
     el.innerHTML = '<div class="text-center text-red-400 py-4">오류: ' + e.message + '</div>';
   }
 }
+// ── 재고실사 ──
+let invMap = new Map(); // sku → { name, ecountQty, actualQty, checked, status:'match'|'mismatch'|'unchecked' }
+let invScannerRunning = false;
+let invFilter = 'all';
+let _invLastSku = null;
+let _invPendingCode = '', _invPendingCount = 0;
+let _invLastCode = '', _invLastTime = 0, _invScanPaused = false;
+
+// 기준일 기본값: 오늘
+(function() {
+  const d = new Date();
+  const ymd = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const el = document.getElementById('invDate');
+  if (el) el.value = ymd;
+})();
+
+async function loadInventoryData() {
+  const dateEl = document.getElementById('invDate');
+  const statusEl = document.getElementById('invLoadStatus');
+  if (!dateEl.value) { statusEl.textContent = '기준일을 선택하세요.'; return; }
+  const baseDate = dateEl.value.replace(/-/g, '');
+  statusEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 mr-1"></i>이카운트 재고 불러오는 중...';
+  document.getElementById('btnLoadInv').disabled = true;
+
+  try {
+    const r = await api('ecountGetInventory', { baseDate, whCode: '0002' });
+    if (!r.ok) {
+      statusEl.innerHTML = '<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>' + (r.error || '불러오기 실패') + '</span>';
+      document.getElementById('btnLoadInv').disabled = false;
+      return;
+    }
+    invMap.clear();
+    const items = r.results || r.inventory || r.data || [];
+    for (const item of items) {
+      const sku = String(item.PROD_CD || '').trim();
+      if (!sku) continue;
+      const qty = Number(item.BAL_QTY || 0);
+      const name = String(item.PROD_DES || '').trim();
+      invMap.set(sku, { name, ecountQty: qty, actualQty: 0, checked: false, status: 'unchecked' });
+    }
+    if (!invMap.size) {
+      statusEl.innerHTML = '<span class="text-amber-500">재고 데이터가 없습니다.</span>';
+      document.getElementById('btnLoadInv').disabled = false;
+      return;
+    }
+    // 실사 세션 시작
+    document.getElementById('invStart').classList.add('hidden');
+    document.getElementById('invSession').classList.remove('hidden');
+    document.getElementById('invCount').textContent = invMap.size;
+    updateInvStats();
+    renderInvList();
+  } catch(e) {
+    statusEl.innerHTML = '<span class="text-red-400">오류: ' + e.message + '</span>';
+  }
+  document.getElementById('btnLoadInv').disabled = false;
+}
+
+function resetInventory() {
+  if (invMap.size > 0 && !confirm('실사 데이터를 초기화하시겠습니까?')) return;
+  invMap.clear();
+  _invLastSku = null;
+  invFilter = 'all';
+  stopInvScanner();
+  document.getElementById('invStart').classList.remove('hidden');
+  document.getElementById('invSession').classList.add('hidden');
+  document.getElementById('invLastScan').classList.add('hidden');
+  document.getElementById('invLoadStatus').textContent = '';
+}
+
+function handleInvScan(code) {
+  if (!code || !invMap.size) return;
+  let sku = code.trim().toUpperCase();
+  if (sku.length < 4) return;
+
+  // 바코드→SKU 변환
+  if (barcodeToSku.has(sku)) sku = barcodeToSku.get(sku).toUpperCase();
+
+  // SKU 매칭
+  let matched = null;
+  if (invMap.has(sku)) matched = sku;
+  else {
+    // 대소문자 무시 매칭
+    for (const [k] of invMap) {
+      if (k.toUpperCase() === sku) { matched = k; break; }
+    }
+  }
+  if (!matched && sku.length >= 6) {
+    for (const [k] of invMap) {
+      const ku = k.toUpperCase();
+      if (ku.includes(sku) || sku.includes(ku)) { matched = k; break; }
+    }
+  }
+
+  if (!matched) {
+    beepError();
+    if (navigator.vibrate) navigator.vibrate([100,50,100]);
+    speak('재고에 없는 스큐입니다');
+    const lastScan = document.getElementById('invLastScan');
+    lastScan.classList.remove('hidden');
+    lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + ' border-red-300';
+    document.getElementById('invLastSku').textContent = code;
+    document.getElementById('invLastName').textContent = '이카운트 재고에 없는 SKU';
+    document.getElementById('invLastBadge').innerHTML = '<span class="text-red-500">✗ 없음</span>';
+    document.getElementById('invLastEcount').textContent = '-';
+    document.getElementById('invLastActual').value = 0;
+    _invLastSku = null;
+    return;
+  }
+
+  beepOk();
+  if (navigator.vibrate) navigator.vibrate(50);
+  const info = invMap.get(matched);
+  speak(`${info.name || matched}. 이카운트 재고 ${info.ecountQty}개`);
+
+  _invLastSku = matched;
+  const lastScan = document.getElementById('invLastScan');
+  lastScan.classList.remove('hidden');
+  lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + ' border-indigo-300';
+  document.getElementById('invLastSku').textContent = matched;
+  document.getElementById('invLastName').textContent = info.name;
+  document.getElementById('invLastBadge').innerHTML = info.checked
+    ? (info.status === 'match' ? '<span class="text-emerald-500">✓ 일치</span>' : '<span class="text-red-500">✗ 불일치</span>')
+    : '<span class="text-amber-500">미확인</span>';
+  document.getElementById('invLastEcount').textContent = info.ecountQty;
+  document.getElementById('invLastActual').value = info.checked ? info.actualQty : info.ecountQty;
+}
+
+function invAdjustQty(delta) {
+  const el = document.getElementById('invLastActual');
+  const val = Math.max(0, (parseInt(el.value) || 0) + delta);
+  el.value = val;
+}
+
+function invUpdateActual() {
+  const el = document.getElementById('invLastActual');
+  el.value = Math.max(0, parseInt(el.value) || 0);
+}
+
+function invConfirmItem() {
+  if (!_invLastSku || !invMap.has(_invLastSku)) return;
+  const info = invMap.get(_invLastSku);
+  const actual = parseInt(document.getElementById('invLastActual').value) || 0;
+  info.actualQty = actual;
+  info.checked = true;
+  info.status = actual === info.ecountQty ? 'match' : 'mismatch';
+
+  beepComplete();
+  speak(info.status === 'match' ? '일치' : '불일치. 차이 ' + Math.abs(actual - info.ecountQty) + '개');
+
+  document.getElementById('invLastBadge').innerHTML = info.status === 'match'
+    ? '<span class="text-emerald-500">✓ 일치</span>'
+    : '<span class="text-red-500">✗ 불일치 (' + (actual - info.ecountQty > 0 ? '+' : '') + (actual - info.ecountQty) + ')</span>';
+  const lastScan = document.getElementById('invLastScan');
+  lastScan.className = lastScan.className.replace(/border-\w+-\d+/g, '') + (info.status === 'match' ? ' border-emerald-300' : ' border-red-300');
+
+  updateInvStats();
+  renderInvList();
+}
+
+function updateInvStats() {
+  let match = 0, mismatch = 0, unchecked = 0;
+  for (const [, info] of invMap) {
+    if (!info.checked) unchecked++;
+    else if (info.status === 'match') match++;
+    else mismatch++;
+  }
+  document.getElementById('invStatMatch').textContent = match;
+  document.getElementById('invStatMismatch').textContent = mismatch;
+  document.getElementById('invStatUnchecked').textContent = unchecked;
+  document.getElementById('invChecked').textContent = (match + mismatch) + '건 확인';
+}
+
+function renderInvList() {
+  // 필터 버튼 스타일
+  ['All','Checked','Mismatch','Unchecked'].forEach(f => {
+    const btn = document.getElementById('invFilter' + f);
+    const active = invFilter === f.toLowerCase();
+    btn.className = 'px-3 py-1 rounded-full text-xs font-semibold ' + (active ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500');
+  });
+
+  const el = document.getElementById('invList');
+  let entries = Array.from(invMap.entries());
+
+  if (invFilter === 'checked') entries = entries.filter(([,v]) => v.checked);
+  else if (invFilter === 'mismatch') entries = entries.filter(([,v]) => v.status === 'mismatch');
+  else if (invFilter === 'unchecked') entries = entries.filter(([,v]) => !v.checked);
+
+  // 정렬: 불일치 먼저, 미확인, 일치 순
+  entries.sort((a,b) => {
+    const order = { mismatch: 0, unchecked: 1, match: 2 };
+    return (order[a[1].status] || 1) - (order[b[1].status] || 1);
+  });
+
+  if (!entries.length) {
+    el.innerHTML = '<div class="text-center text-slate-400 py-4 text-sm">해당 항목 없음</div>';
+    return;
+  }
+
+  el.innerHTML = entries.slice(0, 100).map(([sku, info]) => {
+    let border = 'border-slate-100';
+    let badge = '<span class="text-xs text-slate-400">미확인</span>';
+    if (info.checked) {
+      if (info.status === 'match') {
+        border = 'border-emerald-200';
+        badge = '<span class="text-xs text-emerald-500 font-semibold">✓ 일치</span>';
+      } else {
+        border = 'border-red-200';
+        const diff = info.actualQty - info.ecountQty;
+        badge = `<span class="text-xs text-red-500 font-semibold">✗ ${diff > 0 ? '+' : ''}${diff}</span>`;
+      }
+    }
+    return `<div onclick="invSelectItem('${sku}')" class="flex items-center gap-2 p-2.5 bg-white rounded-xl border ${border} active:opacity-70 cursor-pointer">
+      <div class="flex-1 min-w-0">
+        <div class="font-mono text-xs font-bold text-slate-700 truncate">${sku}</div>
+        <div class="text-[11px] text-slate-400 truncate">${info.name}</div>
+      </div>
+      <div class="text-right shrink-0">
+        <div class="text-xs text-slate-400">EC: <span class="font-bold text-indigo-600">${info.ecountQty}</span>${info.checked ? ' → <span class="font-bold">' + info.actualQty + '</span>' : ''}</div>
+        ${badge}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function invSelectItem(sku) {
+  handleInvScan(sku);
+}
+
+function invManualInput() {
+  const code = prompt('SKU 코드를 입력하세요:');
+  if (code && code.trim()) handleInvScan(code.trim());
+}
+
+function invPhotoScan() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment';
+  input.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const url = URL.createObjectURL(file);
+    if (typeof Quagga !== 'undefined') {
+      Quagga.decodeSingle({
+        src: url, numOfWorkers: 0, locate: true,
+        decoder: { readers: ['ean_reader','code_128_reader','upc_reader'] }
+      }, function(result) {
+        URL.revokeObjectURL(url);
+        if (result && result.codeResult && result.codeResult.code) {
+          handleInvScan(result.codeResult.code);
+        } else {
+          const code = prompt('바코드 인식 실패. SKU를 직접 입력:');
+          if (code) handleInvScan(code.trim());
+        }
+      });
+    } else {
+      URL.revokeObjectURL(url);
+      const code = prompt('SKU를 입력하세요:');
+      if (code) handleInvScan(code.trim());
+    }
+  };
+  input.click();
+}
+
+// 재고실사 바코드 스캐너 (피킹과 독립)
+function startInvScanner() {
+  if (invScannerRunning) return;
+  const vp = document.getElementById('invScannerViewport');
+  if (typeof Quagga === 'undefined') { alert('QuaggaJS 로드 실패'); return; }
+  vp.innerHTML = '<div class="scan-box"></div>';
+
+  Quagga.init({
+    inputStream: { name:'Live', type:'LiveStream', target:vp, constraints:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} }, area: { top:'20%', right:'5%', left:'5%', bottom:'20%' } },
+    decoder: { readers:['ean_reader'], multiple: false },
+    locate: true,
+    locator: { patchSize: 'medium', halfSample: false },
+    frequency: 20
+  }, function(err) {
+    if (err) { vp.innerHTML = '<div class="w-full h-full flex items-center justify-center text-slate-400 p-4 text-center text-xs"><i class="fa-solid fa-video-slash text-red-300 mr-1"></i>카메라 사용 불가. 아래 입력/촬영 이용</div>'; return; }
+    Quagga.start();
+    invScannerRunning = true;
+    var hint = document.getElementById('invScannerTapHint'); if (hint) hint.style.display = 'none';
+    var videoEl = vp.querySelector('video');
+    if (videoEl) videoEl.addEventListener('pause', function() { if (invScannerRunning) try { videoEl.play(); } catch(e){} });
+    document.getElementById('btnInvStopScan').classList.remove('hidden');
+  });
+
+  Quagga.offDetected();
+  Quagga.onDetected(function(result) {
+    const code = result.codeResult.code;
+    if (!code || _invScanPaused) return;
+    if (code.length < 4) return;
+    // confidence
+    const errors = result.codeResult.decodedCodes;
+    if (errors && errors.length) {
+      const errsWithVal = errors.filter(c => c.error !== undefined);
+      if (errsWithVal.length === 0) return;
+      const avgErr = errsWithVal.reduce((s, c) => s + c.error, 0) / errsWithVal.length;
+      if (avgErr > 0.12) return;
+    }
+    // EAN-13 checksum
+    if (/^\d{13}$/.test(code)) {
+      const digits = code.split('').map(Number);
+      const checksum = digits.slice(0, 12).reduce((sum, d, i) => sum + d * (i % 2 === 0 ? 1 : 3), 0);
+      if ((10 - (checksum % 10)) % 10 !== digits[12]) return;
+    }
+    // 2회 연속 동일
+    if (_invPendingCode === code) { _invPendingCount++; } else { _invPendingCode = code; _invPendingCount = 1; }
+    if (_invPendingCount < 2) return;
+    _invPendingCount = 0; _invPendingCode = '';
+    // 쿨다운
+    const now = Date.now();
+    if (code === _invLastCode && now - _invLastTime < 3000) return;
+    _invLastCode = code; _invLastTime = now;
+
+    _invScanPaused = true;
+    handleInvScan(code);
+    setTimeout(() => { _invScanPaused = false; }, 1000);
+  });
+}
+
+function stopInvScanner() {
+  if (!invScannerRunning) return;
+  try { Quagga.stop(); Quagga.offDetected(); } catch(e){}
+  invScannerRunning = false;
+  document.getElementById('btnInvStopScan').classList.add('hidden');
+}
+
+function exportInventoryResult() {
+  if (!invMap.size) return;
+  // XLSX 내보내기
+  const rows = [['SKU코드', '품목명', '이카운트재고', '실물수량', '차이', '상태']];
+  for (const [sku, info] of invMap) {
+    if (!info.checked) continue;
+    const diff = info.actualQty - info.ecountQty;
+    rows.push([sku, info.name, info.ecountQty, info.actualQty, diff, info.status === 'match' ? '일치' : '불일치']);
+  }
+  if (rows.length <= 1) { alert('확인된 항목이 없습니다.'); return; }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '재고실사');
+  const d = new Date();
+  const fname = `재고실사_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+
 // ── 이미지 확대 오버레이 ──
 function showImageOverlay(src) {
   let ov = document.getElementById('imgOverlay');
