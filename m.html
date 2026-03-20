@@ -384,15 +384,19 @@ function savePickingProgress() {
   }
   sessionStorage.setItem('picking_' + currentSession, JSON.stringify(data));
 
-  // 서버 저장 (PC 공유용, 디바운스)
+  // 서버 저장 (PC 공유용, 디바운스 1초)
   clearTimeout(window._saveDetailTimer);
   window._saveDetailTimer = setTimeout(() => {
     const details = [];
     for (const [sku, info] of skuMap) {
       details.push({ sku, skuName: info.name, target: info.target, picked: info.picked, hold: !!info.hold });
     }
-    api('savePickingDetail', { uploadTimestamp: currentSession, details }).catch(e => console.warn('피킹상세 저장 실패:', e));
-  }, 2000);
+    const ts = currentSession;
+    console.log('[피킹저장] 서버 전송 시작:', ts, details.length + '종');
+    api('savePickingDetail', { uploadTimestamp: ts, details })
+      .then(r => console.log('[피킹저장] 서버 응답:', JSON.stringify(r)))
+      .catch(e => console.warn('[피킹저장] 서버 저장 실패:', e));
+  }, 1000);
 }
 async function restorePickingProgress(ts) {
   // 1) 서버에서 먼저 시도
@@ -677,6 +681,21 @@ function quickComplete(sku) {
   renderSkuList();
   updateStats();
   savePickingProgress();
+  // 강제완료는 즉시 서버 저장 (디바운스 무시)
+  flushPickingToServer();
+}
+
+function flushPickingToServer() {
+  if (!currentSession || !skuMap.size) return;
+  clearTimeout(window._saveDetailTimer); // 디바운스 취소
+  const details = [];
+  for (const [sku, info] of skuMap) {
+    details.push({ sku, skuName: info.name, target: info.target, picked: info.picked, hold: !!info.hold });
+  }
+  console.log('[피킹저장] 즉시 전송:', currentSession, details.length + '종');
+  api('savePickingDetail', { uploadTimestamp: currentSession, details })
+    .then(r => console.log('[피킹저장] 즉시 응답:', JSON.stringify(r)))
+    .catch(e => console.warn('[피킹저장] 즉시 저장 실패:', e));
 }
 
 // ── 강제 피킹완료 ──
