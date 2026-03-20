@@ -761,6 +761,13 @@ function startScanner() {
     Quagga.start();
     scannerRunning = true;
     var hint = document.getElementById('scannerTapHint'); if (hint) hint.style.display = 'none';
+    // 카메라 멈춤 감지 — 비디오 재생 중단 시 자동 복구
+    var videoEl = vp.querySelector('video');
+    if (videoEl) {
+      videoEl.addEventListener('pause', function() {
+        if (scannerRunning) { try { videoEl.play(); } catch(e){} }
+      });
+    }
     document.getElementById('btnStartScan').classList.add('hidden');
     document.getElementById('btnStopScan').classList.remove('hidden');
     document.getElementById('btnSnapScan').classList.remove('hidden');
