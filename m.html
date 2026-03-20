@@ -36,7 +36,7 @@
     <div class="text-center mb-8">
       <div class="text-5xl mb-3">🍊</div>
       <h1 class="text-xl font-bold text-slate-800">Delluga WHS</h1>
-      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템</p>
+      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321a</span></p>
     </div>
     <input id="loginPw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
     <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
@@ -690,9 +690,17 @@ function flushPickingToServer() {
   api('savePickingDetail', { uploadTimestamp: ts, details: sendDetails })
     .then(r => {
       console.log('[피킹저장] 응답:', JSON.stringify(r));
-      if (!r || !r.ok) console.warn('[피킹저장] 실패:', r);
+      // 디버그: 임시 alert
+      if (r && r.ok) {
+        document.title = '✅ 저장완료 ' + sendDetails.length + '종';
+      } else {
+        alert('[피킹저장 실패] ' + JSON.stringify(r));
+      }
     })
-    .catch(e => console.warn('[피킹저장] 에러:', e));
+    .catch(e => {
+      console.warn('[피킹저장] 에러:', e);
+      alert('[피킹저장 에러] ' + e.message);
+    });
 }
 
 // ── 강제 피킹완료 ──
