@@ -39,10 +39,21 @@
       <h1 class="text-xl font-bold text-slate-800">Delluga WHS</h1>
       <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321c</span></p>
     </div>
-    <input id="loginId" type="text" placeholder="아이디" autocomplete="username" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
-    <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
-    <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
-    <p class="text-xs text-slate-300 text-center mt-3">관리자에게 아이디를 요청하세요</p>
+    <!-- 로그인 폼 -->
+    <div id="loginForm">
+      <input id="loginId" type="text" placeholder="아이디" autocomplete="username" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
+      <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
+      <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
+      <p class="text-center mt-3"><button onclick="toggleRegister(true)" class="text-sm text-indigo-400 underline">회원가입</button></p>
+    </div>
+    <!-- 회원가입 폼 -->
+    <div id="registerForm" class="hidden">
+      <input id="regId" type="text" placeholder="아이디" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
+      <input id="regPw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
+      <input id="regName" type="text" placeholder="이름 (표시명)" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
+      <button id="btnRegister" class="w-full mt-3 py-3 rounded-xl bg-emerald-500 text-white font-semibold text-lg active:bg-emerald-600">가입하기</button>
+      <p class="text-center mt-3"><button onclick="toggleRegister(false)" class="text-sm text-slate-400 underline">로그인으로 돌아가기</button></p>
+    </div>
     <div id="loginError" class="text-red-500 text-sm text-center mt-2 hidden"></div>
   </div>
 </div>
@@ -399,6 +410,34 @@ function showLoginError(msg) {
   const el = document.getElementById('loginError');
   el.textContent = msg; el.classList.remove('hidden');
 }
+
+function toggleRegister(show) {
+  document.getElementById('loginForm').classList.toggle('hidden', show);
+  document.getElementById('registerForm').classList.toggle('hidden', !show);
+  document.getElementById('loginError').classList.add('hidden');
+}
+
+document.getElementById('btnRegister').onclick = async () => {
+  const id = document.getElementById('regId').value.trim();
+  const pw = document.getElementById('regPw').value.trim();
+  const name = document.getElementById('regName').value.trim();
+  if (!id) { showLoginError('아이디를 입력하세요.'); return; }
+  if (!pw) { showLoginError('비밀번호를 입력하세요.'); return; }
+  if (!name) { showLoginError('이름을 입력하세요.'); return; }
+  try {
+    const r = await api('registerUser', { userId: id, password: pw, displayName: name });
+    if (r.ok) {
+      showLoginError('');
+      document.getElementById('loginError').classList.add('hidden');
+      alert('가입 완료! 로그인해주세요.');
+      document.getElementById('loginId').value = id;
+      document.getElementById('loginPw').value = '';
+      toggleRegister(false);
+    } else {
+      showLoginError(r.error || '가입 실패');
+    }
+  } catch(e) { showLoginError('오류: ' + e.message); }
+};
 
 function onLoginSuccess() {
   document.getElementById('loginOverlay').style.display = 'none';
