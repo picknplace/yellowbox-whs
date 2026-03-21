@@ -37,10 +37,12 @@
     <div class="text-center mb-8">
       <div class="text-5xl mb-3">🍊</div>
       <h1 class="text-xl font-bold text-slate-800">Delluga WHS</h1>
-      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321b</span></p>
+      <p class="text-sm text-slate-400 mt-1">모바일 피킹 시스템 <span class="text-[10px] text-slate-300">v0321c</span></p>
     </div>
-    <input id="loginPw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
+    <input id="loginId" type="text" placeholder="아이디" autocomplete="username" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
+    <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
     <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
+    <p class="text-xs text-slate-300 text-center mt-3">아이디 없으면 비밀번호만 입력</p>
     <div id="loginError" class="text-red-500 text-sm text-center mt-2 hidden"></div>
   </div>
 </div>
@@ -55,8 +57,9 @@
       <span class="text-[10px] text-slate-300">v0321b</span>
     </div>
     <div class="flex items-center gap-2">
+      <span id="headerUserName" class="text-xs text-slate-400"></span>
       <a href="/?desktop=1" class="text-xs text-slate-400 underline">PC</a>
-      <button id="btnLogout" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-sm font-semibold active:bg-slate-200"><i class="fa-solid fa-right-from-bracket mr-1"></i>로그아웃</button>
+      <button id="btnLogout" class="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-sm font-semibold active:bg-slate-200"><i class="fa-solid fa-right-from-bracket mr-1"></i></button>
     </div>
   </header>
 
@@ -73,6 +76,9 @@
     </button>
     <button id="tabStatus" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition" onclick="switchTab('status')">
       <i class="fa-solid fa-chart-pie mr-1"></i>현황
+    </button>
+    <button id="tabAdmin" class="flex-1 py-2 rounded-lg text-sm font-semibold tab-inactive transition hidden" onclick="switchTab('admin')">
+      <i class="fa-solid fa-gear mr-1"></i>관리
     </button>
   </nav>
 
@@ -299,6 +305,37 @@
       <div class="text-center text-slate-400 py-8"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>
     </div>
   </div>
+
+  <!-- 관리자 탭 -->
+  <div id="viewAdmin" class="p-3 hidden">
+    <div class="space-y-3">
+      <!-- 유저 관리 -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-100">
+        <div class="text-sm font-semibold text-slate-600 mb-3"><i class="fa-solid fa-users mr-1"></i>유저 관리</div>
+        <div class="flex gap-2 mb-3">
+          <input id="newUserId" type="text" placeholder="아이디" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <input id="newUserPw" type="text" placeholder="비밀번호" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm">
+          <input id="newUserName" type="text" placeholder="이름" class="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm">
+        </div>
+        <button onclick="adminCreateUser()" class="w-full py-2 rounded-xl bg-indigo-500 text-white text-sm font-semibold active:bg-indigo-600">
+          <i class="fa-solid fa-user-plus mr-1"></i>유저 생성
+        </button>
+        <div id="adminUserStatus" class="text-xs text-center mt-2 text-slate-400"></div>
+        <div id="adminUserList" class="mt-3 space-y-1"></div>
+      </div>
+
+      <!-- 활동 로그 -->
+      <div class="bg-white rounded-2xl p-4 border border-slate-100">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-semibold text-slate-600"><i class="fa-solid fa-clock-rotate-left mr-1"></i>활동 로그</div>
+          <button onclick="loadActivityLogs()" class="text-xs text-indigo-500 font-semibold"><i class="fa-solid fa-rotate-right mr-1"></i>새로고침</button>
+        </div>
+        <div id="adminLogList" class="space-y-1 max-h-[50vh] overflow-y-auto">
+          <div class="text-center text-slate-400 py-4 text-sm">로그 조회 버튼을 누르세요</div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -330,44 +367,66 @@ async function api(action, params = {}) {
 // ── 상태 ──
 let sessions = [];
 let currentSession = null;
-let skuMap = new Map(); // sku → { name, target, picked, rack }
-let barcodeToSku = new Map(); // barcode → sku (바코드→SKU 매핑)
+let skuMap = new Map();
+let barcodeToSku = new Map();
 let scannerRunning = false;
 let _pickingStartTime = null;
 let _pickingTimerInterval = null;
 let imageCache = {};
+let _currentUser = { userId: 'default', displayName: '사용자', role: 'user' };
 
 // ── 로그인 ──
 document.getElementById('btnLogin').onclick = async () => {
+  const id = document.getElementById('loginId').value.trim();
   const pw = document.getElementById('loginPw').value.trim();
   if (!pw) { showLoginError('비밀번호를 입력하세요.'); return; }
   try {
-    const r = await api('checkPassword', { password: pw });
-    if (r.ok) {
-      document.getElementById('loginOverlay').style.display = 'none';
-      document.getElementById('appMain').classList.remove('hidden');
-      sessionStorage.setItem('whs_login', '1');
-      loadSessions();
-      loadBarcodeMap();
+    let r;
+    if (id) {
+      r = await api('userLogin', { userId: id, password: pw });
     } else {
-      showLoginError(r.error || '비밀번호가 올바르지 않습니다.');
+      r = await api('checkPassword', { password: pw });
+    }
+    if (r.ok) {
+      _currentUser = { userId: r.userId || 'default', displayName: r.displayName || id || '사용자', role: r.role || 'user' };
+      sessionStorage.setItem('whs_login', JSON.stringify(_currentUser));
+      onLoginSuccess();
+    } else {
+      showLoginError(r.error || '로그인 실패');
     }
   } catch(e) { showLoginError('서버 오류: ' + e.message); }
 };
 document.getElementById('loginPw').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('btnLogin').click(); };
+document.getElementById('loginId').onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('loginPw').focus(); };
 
 function showLoginError(msg) {
   const el = document.getElementById('loginError');
   el.textContent = msg; el.classList.remove('hidden');
 }
 
-// 자동 로그인
-if (sessionStorage.getItem('whs_login')) {
+function onLoginSuccess() {
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('appMain').classList.remove('hidden');
+  document.getElementById('headerUserName').textContent = _currentUser.displayName;
+  if (_currentUser.role === 'admin') {
+    document.getElementById('tabAdmin').classList.remove('hidden');
+  }
   loadSessions();
   loadBarcodeMap();
 }
+
+// 자동 로그인
+try {
+  const saved = sessionStorage.getItem('whs_login');
+  if (saved) {
+    if (saved === '1') {
+      _currentUser = { userId: 'default', displayName: '사용자', role: 'user' };
+    } else {
+      _currentUser = JSON.parse(saved);
+    }
+    onLoginSuccess();
+  }
+} catch(e) {}
 
 document.getElementById('btnLogout').onclick = () => {
   if (isWorkInProgress() && !confirm('작업 중입니다. 로그아웃하시겠습니까?')) return;
@@ -391,13 +450,15 @@ window.addEventListener('beforeunload', (e) => {
 
 // ── 탭 전환 ──
 function switchTab(tab) {
-  ['picking','inventory','upload','status'].forEach(t => {
-    document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1)).className =
-      'flex-1 py-2 rounded-lg text-sm font-semibold transition ' + (t === tab ? 'tab-active' : 'tab-inactive');
-    document.getElementById('view' + t.charAt(0).toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
+  ['picking','inventory','upload','status','admin'].forEach(t => {
+    const tabBtn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    const view = document.getElementById('view' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (tabBtn) tabBtn.className = tabBtn.className.replace(/tab-active|tab-inactive/g, '') + (t === tab ? ' tab-active' : ' tab-inactive');
+    if (view) view.classList.toggle('hidden', t !== tab);
   });
   if (tab === 'status') loadStatus();
   if (tab === 'inventory' && !_invCurrentSession) loadInvSessions();
+  if (tab === 'admin') { loadAdminUsers(); loadActivityLogs(); }
   if (tab !== 'picking' && scannerRunning) stopScanner();
   if (tab !== 'inventory' && invScannerRunning) stopInvScanner();
 }
@@ -861,7 +922,7 @@ function forceCompletePicking() {
   api('savePickingLog', {
     uploadTimestamp: currentSession,
     rowCount: totalQty,
-    pickedBy: 'mobile_force_complete',
+    pickedBy: (_currentUser.displayName || _currentUser.userId || 'mobile') + '_강제완료',
     memo: `강제완료 (${pickedQty}/${totalQty} 스캔됨, 미완료 ${notDone.length}건)`
   }).then(() => {
     alert('강제 피킹완료 처리되었습니다.');
@@ -1232,7 +1293,7 @@ function updateStats() {
   if (allQtyDone && !hasHold && total > 0 && !_pickingSaved && currentSession) {
     _pickingSaved = true;
     const elapsed = stopPickingTimer();
-    api('savePickingLog', { uploadTimestamp: currentSession, rowCount: totalQty, pickedBy: 'mobile_user', elapsed }).catch(()=>{});
+    api('savePickingLog', { uploadTimestamp: currentSession, rowCount: totalQty, pickedBy: _currentUser.displayName || _currentUser.userId || 'mobile_user', elapsed }).catch(()=>{});
   }
 }
 
@@ -1792,6 +1853,83 @@ function exportInventoryResult() {
   const d = new Date();
   const fname = `재고실사_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
   XLSX.writeFile(wb, fname);
+}
+
+// ── 관리자 기능 ──
+async function adminCreateUser() {
+  const id = document.getElementById('newUserId').value.trim();
+  const pw = document.getElementById('newUserPw').value.trim();
+  const name = document.getElementById('newUserName').value.trim();
+  const statusEl = document.getElementById('adminUserStatus');
+  if (!id || !pw) { statusEl.textContent = '아이디와 비밀번호를 입력하세요.'; return; }
+  statusEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1"></i>생성 중...';
+  try {
+    const r = await api('createUser', { adminUserId: _currentUser.userId, newUserId: id, newPassword: pw, displayName: name || id, role: 'user' });
+    if (r.ok) {
+      statusEl.innerHTML = '<span class="text-emerald-500"><i class="fa-solid fa-check mr-1"></i>' + id + ' 생성 완료</span>';
+      document.getElementById('newUserId').value = '';
+      document.getElementById('newUserPw').value = '';
+      document.getElementById('newUserName').value = '';
+      loadAdminUsers();
+    } else {
+      statusEl.innerHTML = '<span class="text-red-400">' + (r.error || '생성 실패') + '</span>';
+    }
+  } catch(e) { statusEl.innerHTML = '<span class="text-red-400">오류: ' + e.message + '</span>'; }
+}
+
+async function loadAdminUsers() {
+  const el = document.getElementById('adminUserList');
+  try {
+    const r = await api('getUsers', { adminUserId: _currentUser.userId });
+    if (!r.ok) { el.innerHTML = '<div class="text-xs text-red-400">' + (r.error||'') + '</div>'; return; }
+    if (!r.users.length) { el.innerHTML = '<div class="text-xs text-slate-400 py-2">등록된 유저 없음 (관리자 제외)</div>'; return; }
+    el.innerHTML = r.users.map(u => {
+      const dt = u.createdAt ? new Date(u.createdAt) : null;
+      const dateStr = dt && !isNaN(dt.getTime()) ? `${dt.getMonth()+1}/${dt.getDate()}` : '';
+      return `<div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg text-xs">
+        <div><span class="font-bold text-slate-700">${u.displayName}</span> <span class="text-slate-400">(${u.userId})</span></div>
+        <div class="flex items-center gap-2">
+          <span class="text-slate-300">${dateStr}</span>
+          <button onclick="adminDeleteUser('${u.userId}')" class="px-2 py-0.5 rounded bg-red-100 text-red-500 font-semibold active:bg-red-200">삭제</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="text-xs text-red-400">오류</div>'; }
+}
+
+async function adminDeleteUser(userId) {
+  if (!confirm(userId + ' 유저를 삭제하시겠습니까?')) return;
+  try {
+    const r = await api('deleteUser', { adminUserId: _currentUser.userId, targetUserId: userId });
+    if (r.ok) loadAdminUsers();
+    else alert(r.error || '삭제 실패');
+  } catch(e) { alert('오류: ' + e.message); }
+}
+
+async function loadActivityLogs() {
+  const el = document.getElementById('adminLogList');
+  el.innerHTML = '<div class="text-center text-slate-400 py-4 text-sm"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i>로딩 중...</div>';
+  try {
+    const r = await api('getActivityLogs', { adminUserId: _currentUser.userId, days: 7 });
+    if (!r.ok) { el.innerHTML = '<div class="text-xs text-red-400">' + (r.error||'') + '</div>'; return; }
+    if (!r.logs.length) { el.innerHTML = '<div class="text-xs text-slate-400 py-4 text-center">최근 7일 로그 없음</div>'; return; }
+    el.innerHTML = r.logs.map(l => {
+      const dt = new Date(l.timestamp);
+      const timeStr = !isNaN(dt.getTime()) ? `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}` : l.timestamp;
+      let typeColor = 'bg-indigo-100 text-indigo-600';
+      if (l.type === '피킹완료') typeColor = 'bg-emerald-100 text-emerald-600';
+      else if (l.type === '재고실사') typeColor = 'bg-teal-100 text-teal-600';
+      else if (l.type === '이카운트전송') typeColor = 'bg-orange-100 text-orange-600';
+      return `<div class="flex items-center gap-2 p-2 bg-white rounded-lg border border-slate-100 text-xs">
+        <span class="px-1.5 py-0.5 rounded ${typeColor} font-semibold text-[10px] shrink-0">${l.type}</span>
+        <div class="flex-1 min-w-0">
+          <span class="text-slate-500">${l.detail}</span>
+          ${l.user ? '<span class="text-slate-300 ml-1">by ' + l.user + '</span>' : ''}
+        </div>
+        <span class="text-slate-300 shrink-0">${timeStr}</span>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div class="text-xs text-red-400">오류: ' + e.message + '</div>'; }
 }
 
 // ── 이미지 확대 오버레이 ──
