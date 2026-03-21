@@ -3371,7 +3371,16 @@ async function smartDirectoryPicker() {
     document.getElementById("analysisMeta").innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i>서버에서 분석 데이터 집계 중...';
 
     try {
-      const result = await gasRun("serverGetBasicAnalysis", dateFrom, dateTo);
+      const ctrl = new AbortController();
+      const tmr = setTimeout(() => ctrl.abort(), 180000); // 3분 timeout
+      const resp = await fetch(GAS_API_URL, {
+        method: 'POST', redirect: 'follow',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'getBasicAnalysis', dateFrom, dateTo }),
+        signal: ctrl.signal
+      });
+      clearTimeout(tmr);
+      const result = await resp.json();
       if (!result || !result.ok) {
         document.getElementById("analysisMeta").textContent = "분석 실패: " + (result ? result.error : "응답 없음");
         return;
