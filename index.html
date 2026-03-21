@@ -1189,6 +1189,7 @@
         <button class="admin-sub-btn picking-mode-btn" data-sub="savedData"><i class="fa-solid fa-database mr-1.5"></i>저장 데이터</button>
         <button class="admin-sub-btn picking-mode-btn" data-sub="settings"><i class="fa-solid fa-gear mr-1.5"></i>설정</button>
         <button class="admin-sub-btn picking-mode-btn" data-sub="diagnose"><i class="fa-solid fa-stethoscope mr-1.5"></i>데이터 진단</button>
+        <button class="admin-sub-btn picking-mode-btn" data-sub="bulkImport"><i class="fa-solid fa-folder-open mr-1.5"></i>폴더 일괄 업로드</button>
       </div>
 
       <!-- 업로드 이력 -->
@@ -1262,6 +1263,18 @@
         <div class="text-sm text-slate-500 mb-3">업로드 세션별 데이터 이상/헤더 매핑 오류를 진단합니다.</div>
         <button id="btnRunDiagnose" class="btn-primary text-sm mb-4"><i class="fa-solid fa-play mr-1.5"></i>진단 실행</button>
         <div id="diagnoseResult" class="space-y-3"></div>
+      </div>
+
+      <!-- 폴더 일괄 업로드 -->
+      <div id="adminBulkImport" class="admin-sub-panel hidden">
+        <div class="text-sm text-slate-500 mb-2">메인 폴더를 선택하면 하위 폴더(사입/위탁)의 날짜 파일을 자동 스캔하여 업로드합니다.</div>
+        <div class="text-xs text-orange-500 mb-3"><i class="fa-solid fa-triangle-exclamation mr-1"></i>기존 ORDERS 데이터를 먼저 삭제 후 진행하는 것을 권장합니다.</div>
+        <div class="flex gap-2 flex-wrap mb-4">
+          <button id="btnClearOrders" class="btn-secondary text-sm text-red-500 border-red-200 hover:bg-red-50"><i class="fa-solid fa-trash mr-1.5"></i>기존 ORDERS 전체 삭제</button>
+          <button id="btnBulkImport" class="btn-primary text-sm"><i class="fa-solid fa-folder-open mr-1.5"></i>폴더 선택 및 일괄 업로드</button>
+        </div>
+        <div id="bulkImportProgress" class="space-y-2 text-sm"></div>
+        <div id="bulkImportResult" class="space-y-2 mt-3"></div>
       </div>
     </div>
   </section>
@@ -4236,6 +4249,7 @@ async function smartDirectoryPicker() {
     serverUserLogin:'userLogin', serverRegisterUser:'registerUser',
     serverGetUsers:'getUsers', serverDeleteUser:'deleteUser', serverGetActivityLogs:'getActivityLogs',
     serverDiagnoseBadData:'diagnoseBadData',
+    serverClearAllOrders:'clearAllOrders',
   };
   const _fnArgMap = {
     serverUploadOrders:['rows','uploadedBy'], serverGetUploadSessions:['days'],
@@ -4803,7 +4817,7 @@ async function smartDirectoryPicker() {
       const target = btn.dataset.sub;
       document.querySelectorAll(".admin-sub-btn").forEach(b => b.classList.toggle("active", b===btn));
       document.querySelectorAll(".admin-sub-panel").forEach(p => p.classList.add("hidden"));
-      const panels = { uploadLogs:"adminUploadLogs", ecountLogs:"adminEcountLogs", savedData:"adminSavedData", settings:"adminSettings", diagnose:"adminDiagnose" };
+      const panels = { uploadLogs:"adminUploadLogs", ecountLogs:"adminEcountLogs", savedData:"adminSavedData", settings:"adminSettings", diagnose:"adminDiagnose", bulkImport:"adminBulkImport" };
       document.getElementById(panels[target]).classList.remove("hidden");
     };
   });
@@ -5086,6 +5100,212 @@ async function smartDirectoryPicker() {
       btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play mr-1.5"></i>진단 실행';
       resultEl.innerHTML = '<div class="text-red-500">오류: ' + e.message + '</div>';
     }
+  };
+
+  // ============================================================
+  // 폴더 일괄 업로드
+  // ============================================================
+
+  // ORDERS 전체 삭제
+  document.getElementById("btnClearOrders").onclick = async () => {
+    if (!confirm("⚠️ ORDERS 시트의 모든 데이터를 삭제합니다.\n정말 삭제하시겠습니까?")) return;
+    if (!confirm("한번 더 확인: 정말로 전체 주문 데이터를 삭제합니까? 되돌릴 수 없습니다.")) return;
+    const btn = document.getElementById("btnClearOrders");
+    btn.disabled = true; btn.textContent = "삭제 중...";
+    try {
+      const r = await gasRun("serverClearAllOrders");
+      if (r.ok) {
+        alert("삭제 완료: " + (r.deleted||0) + "행 삭제됨");
+      } else {
+        alert("오류: " + (r.error||"알 수 없음"));
+      }
+    } catch(e) { alert("오류: " + e.message); }
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-trash mr-1.5"></i>기존 ORDERS 전체 삭제';
+  };
+
+  // 폴더 재귀 스캔
+  async function scanFolderRecursive(dirHandle, path) {
+    const results = [];
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'directory') {
+        const sub = await entry.getHandle ? dirHandle.getDirectoryHandle(entry.name) : entry;
+        const subResults = await scanFolderRecursive(sub, path + "/" + entry.name);
+        results.push(...subResults);
+      } else if (entry.kind === 'file') {
+        const ext = entry.name.split('.').pop().toLowerCase();
+        if (['xlsx','xls','csv'].includes(ext)) {
+          results.push({ name: entry.name, path: path + "/" + entry.name, entry });
+        }
+      }
+    }
+    return results;
+  }
+
+  // 파일이 사입/위탁 경로이고 날짜 패턴이 있는지 확인
+  function isTargetFile(filePath, fileName) {
+    const pathLower = filePath.toLowerCase();
+    // 경로에 사입 또는 위탁이 포함
+    const hasCat = /사입|위탁/.test(filePath);
+    if (!hasCat) return false;
+    // 파일명에 날짜 패턴 (YYYYMMDD, YYYY-MM-DD, YYYY.MM.DD, MMDD 등)
+    const hasDate = /\d{4}[-.]?\d{2}[-.]?\d{2}|\d{2}[-.]?\d{2}/.test(fileName);
+    // 임시파일/시스템파일 제외
+    if (fileName.startsWith('~$') || fileName.startsWith('.')) return false;
+    return hasDate;
+  }
+
+  document.getElementById("btnBulkImport").onclick = async () => {
+    const progressEl = document.getElementById("bulkImportProgress");
+    const resultEl = document.getElementById("bulkImportResult");
+    progressEl.innerHTML = ''; resultEl.innerHTML = '';
+
+    let dirHandle;
+    try {
+      dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    } catch(e) { return; } // 사용자 취소
+
+    const btn = document.getElementById("btnBulkImport");
+    btn.disabled = true; btn.textContent = "스캔 중...";
+    progressEl.innerHTML = '<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>폴더 스캔 중...</div>';
+
+    try {
+      // 1단계: 재귀 스캔
+      const allFiles = await scanFolderRecursive(dirHandle, dirHandle.name);
+      const targetFiles = allFiles.filter(f => isTargetFile(f.path, f.name));
+
+      progressEl.innerHTML = `<div class="text-blue-600">전체 ${allFiles.length}개 파일 발견, 대상 파일 <b>${targetFiles.length}개</b> (사입/위탁 + 날짜 패턴)</div>`;
+
+      if (targetFiles.length === 0) {
+        resultEl.innerHTML = '<div class="text-orange-500">대상 파일이 없습니다. 경로에 "사입" 또는 "위탁" 폴더가 있고, 파일명에 날짜가 포함되어야 합니다.</div>';
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open mr-1.5"></i>폴더 선택 및 일괄 업로드';
+        return;
+      }
+
+      // 2단계: 파일별 파싱 + 멀티SKU 분할 + 중복제거
+      const globalDedupSet = new Set(); // 주문번호+수취인+상품명+옵션
+      let totalParsed = 0, totalRows = 0, totalDedup = 0, totalExpanded = 0;
+      let allServerRows = [];
+      const fileResults = [];
+
+      for (let fi = 0; fi < targetFiles.length; fi++) {
+        const tf = targetFiles[fi];
+        progressEl.innerHTML = `<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>[${fi+1}/${targetFiles.length}] ${tf.name} 파싱 중...</div>`;
+
+        try {
+          const fileObj = await tf.entry.getFile();
+          const parsed = await parseFile(fileObj);
+          if (parsed.length <= 1) { fileResults.push({ file: tf.path, rows: 0, used: 0, dup: 0, error: null }); continue; }
+
+          const fileHeaders = (parsed[0]||[]).map(h => String(h));
+
+          const {idx: idxSku}    = findSmart(fileHeaders, "sku", FIXED.sku);
+          const {idx: idxQty}    = findSmart(fileHeaders, "qty", FIXED.qty);
+          const {idx: idxName}   = findSmart(fileHeaders, "name", FIXED.name);
+          const {idx: idxMarket} = findSmart(fileHeaders, "market", FIXED.market);
+          const {idx: idxAmount} = findSmart(fileHeaders, "amount", FIXED.amount);
+          const {idx: idxAttr}   = findSmart(fileHeaders, "attr", FIXED.attr);
+          const {idx: idxOrder}  = findBySynonyms(fileHeaders, ORDERID_CANDS);
+          const {idx: idxTracking} = findBySynonyms(fileHeaders, TRACKING_CANDS);
+          const {idx: idxRecipient} = findBySynonyms(fileHeaders, RECIPIENT_CANDS);
+          const {idx: idxDate}   = findSmart(fileHeaders, "date", "파일날짜");
+
+          if (idxSku < 0 || idxQty < 0) {
+            fileResults.push({ file: tf.path, rows: parsed.length-1, used: 0, dup: 0, error: "SKU/수량 헤더 없음" });
+            continue;
+          }
+
+          const uploadDate = extractDateFromFilename(tf.name);
+          // 경로에서 사입/위탁 판별
+          const market_from_path = /위탁/.test(tf.path) ? "위탁" : (/사입/.test(tf.path) ? "사입" : "");
+
+          let fileUsed = 0, fileDup = 0;
+
+          for (let r = 1; r < parsed.length; r++) {
+            const row = parsed[r] || [];
+            const orderNo = idxOrder >= 0 ? String(row[idxOrder]??"").trim() : `${tf.name}_row_${r}`;
+            const recipient = idxRecipient >= 0 ? String(row[idxRecipient]??"").trim() : "";
+            const parts = expandMultiSKURow(row, idxSku, idxName>=0?idxName:idxSku, idxQty, idxAmount, idxAttr);
+
+            for (const p of parts) {
+              // 중복키: 주문번호 + 수취인 + 상품명 + 옵션(attr)
+              const dedupKey = [orderNo, recipient, p.name, p.attr].join("||").toLowerCase();
+              if (globalDedupSet.has(dedupKey)) { fileDup++; totalDedup++; continue; }
+              globalDedupSet.add(dedupKey);
+
+              const rowMarket = idxMarket>=0 ? String(row[idxMarket]??"").trim() : market_from_path;
+              const rowDate = idxDate>=0 ? String(row[idxDate]??"").trim() : uploadDate;
+
+              allServerRows.push({
+                orderNo,
+                sku: p.sku,
+                skuName: p.name,
+                qty: Number(p.qty)||0,
+                market: rowMarket,
+                amount: p.amount,
+                recipient,
+                attr: p.attr,
+                trackingNo: idxTracking>=0 ? String(row[idxTracking]??"").trim() : "",
+                uploadDate: rowDate
+              });
+              fileUsed++;
+              totalExpanded++;
+            }
+          }
+
+          totalParsed++;
+          totalRows += parsed.length - 1;
+          fileResults.push({ file: tf.path, rows: parsed.length-1, used: fileUsed, dup: fileDup, error: null });
+
+        } catch(err) {
+          fileResults.push({ file: tf.path, rows: 0, used: 0, dup: 0, error: err.message });
+        }
+      }
+
+      progressEl.innerHTML = `<div class="text-blue-600">파싱 완료: ${totalParsed}개 파일, ${totalRows}행 → 분할 후 ${totalExpanded}행 (중복 제거 ${totalDedup}건)</div>`;
+
+      // 3단계: 배치 업로드 (3000행씩)
+      if (allServerRows.length === 0) {
+        resultEl.innerHTML = '<div class="text-orange-500">업로드할 데이터가 없습니다.</div>';
+        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open mr-1.5"></i>폴더 선택 및 일괄 업로드';
+        return;
+      }
+
+      const BATCH = 3000;
+      let uploaded = 0, serverSaved = 0, serverDup = 0;
+      const totalBatches = Math.ceil(allServerRows.length / BATCH);
+
+      for (let b = 0; b < totalBatches; b++) {
+        const batch = allServerRows.slice(b * BATCH, (b + 1) * BATCH);
+        progressEl.innerHTML = `<div class="text-green-600"><i class="fa-solid fa-cloud-arrow-up fa-spin mr-1"></i>업로드 중... 배치 ${b+1}/${totalBatches} (${uploaded}/${allServerRows.length}행)</div>`;
+
+        try {
+          const r = await gasRun("serverUploadOrders", batch, "bulk_import");
+          serverSaved += (r.saved||0);
+          serverDup += (r.duplicates||0);
+          uploaded += batch.length;
+        } catch(err) {
+          progressEl.innerHTML += `<div class="text-red-500">배치 ${b+1} 오류: ${err.message}</div>`;
+        }
+      }
+
+      // 4단계: 결과
+      progressEl.innerHTML = `<div class="text-green-700 font-bold"><i class="fa-solid fa-check mr-1"></i>완료! ${totalParsed}개 파일 → ${allServerRows.length}행 전송 → 서버 저장 ${serverSaved}건 (서버 중복 ${serverDup}건, 로컬 중복 ${totalDedup}건)</div>`;
+
+      // 파일별 상세
+      let detailHtml = '<details class="mt-2"><summary class="text-xs text-blue-500 cursor-pointer">파일별 상세 (' + fileResults.length + '개)</summary>';
+      detailHtml += '<div class="overflow-x-auto mt-1 max-h-96 overflow-y-auto"><table class="w-full text-xs border-collapse"><thead class="sticky top-0 bg-white"><tr class="bg-slate-50"><th class="px-2 py-1 text-left">경로</th><th class="px-2 py-1 text-right">원본행</th><th class="px-2 py-1 text-right">사용</th><th class="px-2 py-1 text-right">중복</th><th class="px-2 py-1 text-left">오류</th></tr></thead><tbody>';
+      for (const fr of fileResults) {
+        const cls = fr.error ? 'text-red-500' : fr.used === 0 ? 'text-slate-400' : '';
+        detailHtml += `<tr class="border-t border-slate-100 ${cls}"><td class="px-2 py-1">${fr.file}</td><td class="px-2 py-1 text-right">${fr.rows}</td><td class="px-2 py-1 text-right">${fr.used}</td><td class="px-2 py-1 text-right">${fr.dup}</td><td class="px-2 py-1">${fr.error||''}</td></tr>`;
+      }
+      detailHtml += '</tbody></table></div></details>';
+      resultEl.innerHTML = detailHtml;
+
+    } catch(e) {
+      progressEl.innerHTML = `<div class="text-red-500">오류: ${e.message}</div>`;
+    }
+
+    btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-folder-open mr-1.5"></i>폴더 선택 및 일괄 업로드';
   };
 
   // ============================================================
