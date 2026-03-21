@@ -1493,23 +1493,60 @@
     var parts = s.split(/[,;\/\n|]/).map(function(p){return p.trim();}).filter(Boolean);
     return parts[0] || s;
   }
-  function expandMultiSKURow(row, idxSku, idxName, idxQty){
+  function expandMultiSKURow(row, idxSku, idxName, idxQty, idxAmount, idxAttr){
     const out=[];
     const skuRaw=String(row[idxSku]??"").trim(); if (!skuRaw) return out;
     const nameRaw=String(row[idxName]??"").trim();
     const qtyRaw =String(row[idxQty]??"").trim();
+    const amountRaw = (idxAmount>=0) ? String(row[idxAmount]??"").trim() : "0";
+    const attrRaw = (idxAttr>=0) ? String(row[idxAttr]??"").trim() : "";
 
     const skuParts = skuRaw.split(/[,;\n]/).map(s=>s.trim()).filter(Boolean);
     const nameParts= nameRaw.split(/[,;\n]/).map(s=>s.trim());
     const qtyParts = qtyRaw.split(/[,;\n]/).map(s=>s.trim());
 
-    const n = Math.max(skuParts.length, nameParts.length, qtyParts.length);
+    const n = skuParts.length;
+    if (n <= 1) {
+      // 단일 SKU — 분할 불필요
+      out.push({ sku: skuParts[0]||skuRaw, name: nameRaw, qty: numClean(qtyRaw), amount: numClean(amountRaw), attr: attrRaw });
+      return out;
+    }
+
+    // 멀티 SKU — 금액 분할
+    const amountParts = amountRaw.split(/[,;\n]/).map(s=>s.trim());
+    let amounts = [];
+    if (amountParts.length === n) {
+      amounts = amountParts.map(a => numClean(a));
+    } else {
+      // 금액이 하나면 N등분
+      const totalAmt = numClean(amountRaw);
+      const each = Math.round(totalAmt / n);
+      amounts = Array(n).fill(each);
+    }
+
+    // 멀티 SKU — attr 분할: key:value 쌍으로 분리 후 SKU 수만큼 그룹핑
+    let attrGroups = Array(n).fill("");
+    if (attrRaw) {
+      // "사이즈:177,WMS:R2,사이즈:177,WMS:R4" → key:value 쌍 단위로 분리
+      const attrTokens = attrRaw.split(",").map(s => s.trim()).filter(Boolean);
+      // key:value 쌍을 그룹화 (연속된 key:value를 하나의 attr 세트로)
+      const pairsPerSku = Math.floor(attrTokens.length / n);
+      if (pairsPerSku > 0 && pairsPerSku * n === attrTokens.length) {
+        for (let i = 0; i < n; i++) {
+          attrGroups[i] = attrTokens.slice(i * pairsPerSku, (i + 1) * pairsPerSku).join(",");
+        }
+      } else {
+        // 균등 분할 불가 → 전체 attr을 각 SKU에 동일 적용
+        attrGroups = Array(n).fill(attrRaw);
+      }
+    }
+
     for (let i=0;i<n;i++){
       const sku = skuParts[i] ?? skuParts[skuParts.length-1] ?? "";
       const nm  = nameParts[i] ?? nameParts[nameParts.length-1] ?? "";
       const qv  = numClean(qtyParts[i] ?? qtyParts[qtyParts.length-1] ?? "0");
       if (!sku) continue;
-      out.push([sku, nm, qv]);
+      out.push({ sku, name: nm, qty: qv, amount: amounts[i] ?? 0, attr: attrGroups[i] ?? "" });
     }
     return out;
   }
@@ -1581,17 +1618,17 @@
           for (let r=1; r<parsed.length; r++){
             const row = parsed[r]||[];
             const orderNo = idxOrder>=0 ? String(row[idxOrder]??"").trim() : `${f.name}_row_${r}`;
-            const parts = expandMultiSKURow(row, idxSku, idxName>=0?idxName:idxSku, idxQty);
-            for (const [sku, name, qty] of parts){
+            const parts = expandMultiSKURow(row, idxSku, idxName>=0?idxName:idxSku, idxQty, idxAmount, idxAttr);
+            for (const p of parts){
               serverRows.push({
                 orderNo: orderNo,
-                sku: sku,
-                skuName: name,
-                qty: Number(qty)||0,
+                sku: p.sku,
+                skuName: p.name,
+                qty: Number(p.qty)||0,
                 market: idxMarket>=0 ? String(row[idxMarket]??"").trim() : "",
-                amount: idxAmount>=0 ? numClean(row[idxAmount]??0) : 0,
+                amount: p.amount,
                 recipient: idxRecipient>=0 ? String(row[idxRecipient]??"").trim() : "",
-                attr: idxAttr>=0 ? String(row[idxAttr]??"").trim() : "",
+                attr: p.attr,
                 trackingNo: idxTracking>=0 ? String(row[idxTracking]??"").trim() : "",
                 uploadDate: uploadDate
               });
@@ -1915,8 +1952,8 @@ async function smartDirectoryPicker() {
       const orderKey = idxGroup >= 0 ? String(row[idxGroup] ?? "").trim() : `row_${r}`;
       const trackingKey = idxTracking >= 0 ? String(row[idxTracking] ?? "").trim() : orderKey;
       const parts = expandMultiSKURow(row, idxSku, idxName, idxQty);
-      for (const [sku, name, qty] of parts){
-        allExpanded.push({ sku, name, qty: Number(qty)||0, rack, orderKey, trackingKey });
+      for (const p of parts){
+        allExpanded.push({ sku: p.sku, name: p.name, qty: Number(p.qty)||0, rack, orderKey, trackingKey });
       }
     }
 
@@ -3443,31 +3480,28 @@ async function smartDirectoryPicker() {
       filteredCount++;
 
       const market=String(row[idxMarket]??"").trim() || "(미지정)";
-      const amount=numClean(row[idxAmount]??0);
-      amountByMarket.set(market,(amountByMarket.get(market)||0)+amount);
-
-      // 일별 추이 데이터 수집
-      if (rowDate) {
-        if (!trendData.has(rowDate)) trendData.set(rowDate, new Map());
-        const dayMap = trendData.get(rowDate);
-        dayMap.set(market, (dayMap.get(market)||0) + amount);
-      }
 
       if (!ordersByMarket.has(market)) ordersByMarket.set(market, new Set());
       const set=ordersByMarket.get(market);
       if (idxOrder>=0){ set.add(String(row[idxOrder]??"").trim()||`row${r}`); }
       else { set.add(`row${r}`); }
 
-      const parts = expandMultiSKURow(row, idxSku, idxName, idxQty);
-      const rowQty = parts.reduce((s,[, ,q])=>s+(Number(q)||0), 0);
-      const unit = rowQty>0 ? (amount/rowQty) : 0;
-      for (const [sku,name,qty] of parts){
+      const parts = expandMultiSKURow(row, idxSku, idxName, idxQty, idxAmount, -1);
+      // 분할된 금액의 합을 마켓별/일별에 반영
+      const rowTotalAmt = parts.reduce((s,p) => s + (p.amount||0), 0);
+      amountByMarket.set(market,(amountByMarket.get(market)||0)+rowTotalAmt);
+      if (rowDate) {
+        if (!trendData.has(rowDate)) trendData.set(rowDate, new Map());
+        const dayMap = trendData.get(rowDate);
+        dayMap.set(market, (dayMap.get(market)||0) + rowTotalAmt);
+      }
+
+      for (const p of parts){
         let cat="";
         if (idxCat>=0){ cat = String(row[idxCat]??"").trim(); }
-        else { cat = String(name||"").split(/[\/\s]/)[0] || "(기타)"; catName = catName || "임시상품군(상품명 첫 단어)"; }
-        const alloc = unit * (Number(qty)||0);
-        expandedAll.push([sku,name,qty,market,cat,alloc]);
-        qtyByMarket.set(market, (qtyByMarket.get(market)||0) + (Number(qty)||0));
+        else { cat = String(p.name||"").split(/[\/\s]/)[0] || "(기타)"; catName = catName || "임시상품군(상품명 첫 단어)"; }
+        expandedAll.push([p.sku,p.name,p.qty,market,cat,p.amount]);
+        qtyByMarket.set(market, (qtyByMarket.get(market)||0) + (Number(p.qty)||0));
       }
     }
 
@@ -4270,18 +4304,18 @@ async function smartDirectoryPicker() {
       const market = String(row[idxMarket]??"").trim() || "(미지정)";
       const recipient = idxRecipient>=0 ? String(row[idxRecipient]??"").trim() : "";
       const parts = expandMultiSKURow(row, idxSku, idxName, idxQty);
-      for (const [sku, name, qty] of parts){
+      for (const p of parts){
         // 사은품 SKU 제외 (S+8자리이상 영숫자)
-        if (/^S[A-Za-z0-9]{8,}$/.test(sku)) continue;
+        if (/^S[A-Za-z0-9]{8,}$/.test(p.sku)) continue;
         saleList.push({
           SaleDate: yyyymmdd,
           CustCode: "",
           CustName: toEcountCust(market),
           EmpCode: manager,
           WHCode: ECOUNT_WH_CODE,
-          ProdCode: sku,
-          ProdName: name,
-          Qty: Number(qty)||0,
+          ProdCode: p.sku,
+          ProdName: p.name,
+          Qty: Number(p.qty)||0,
           Remark: recipient
         });
       }
@@ -4491,8 +4525,8 @@ async function smartDirectoryPicker() {
     for (let r=1; r<rawRows.length; r++){
       const row = rawRows[r]||[];
       const parts = expandMultiSKURow(row, idxSku, -1, -1);
-      for (const [sku] of parts){
-        if (sku) skuSet.add(sku.trim());
+      for (const p of parts){
+        if (p.sku) skuSet.add(p.sku.trim());
       }
     }
     console.log("추출된 SKU 샘플:", [...skuSet].slice(0,5));
@@ -4509,8 +4543,8 @@ async function smartDirectoryPicker() {
     for (let r=1; r<rawRows.length; r++){
       const row = rawRows[r]||[];
       const parts = expandMultiSKURow(row, idxSku, idxName, -1);
-      for (const [sku, name] of parts){
-        if (sku && name) map[sku.trim().toUpperCase()] = name.trim();
+      for (const p of parts){
+        if (p.sku && p.name) map[p.sku.trim().toUpperCase()] = p.name.trim();
       }
     }
     return map;
