@@ -239,20 +239,37 @@
     </div>
     <h2 class="text-xl font-bold logo-text mb-1">Delluga</h2>
     <p class="text-sm text-slate-400 mb-6">Warehouse System V1.0</p>
-    <input id="loginPw" type="password" placeholder="비밀번호 입력"
-      class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-3"
-      onkeydown="if(event.key==='Enter')doLogin()">
-    <!-- 관리자 로그인 필드 (토글) -->
-    <div id="adminFields" class="hidden mb-3">
-      <input id="loginAdminId" type="text" placeholder="관리자 ID"
-        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-2">
+    <!-- 로그인 폼 -->
+    <div id="pcLoginForm">
+      <input id="loginId" type="text" placeholder="아이디"
+        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-2"
+        onkeydown="if(event.key==='Enter')document.getElementById('loginPw').focus()">
+      <input id="loginPw" type="password" placeholder="비밀번호"
+        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-3"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button onclick="doLogin()" class="btn-primary w-full">
+        <i class="fa-solid fa-right-to-bracket mr-2"></i>로그인
+      </button>
+      <div id="loginError" class="text-xs text-red-500 mt-3 hidden"></div>
+      <div class="mt-4">
+        <a href="#" onclick="pcToggleRegister(true);event.preventDefault()" class="text-xs text-slate-400 hover:text-orange-500 transition">회원가입</a>
+      </div>
     </div>
-    <button onclick="doLogin()" class="btn-primary w-full">
-      <i class="fa-solid fa-right-to-bracket mr-2"></i>로그인
-    </button>
-    <div id="loginError" class="text-xs text-red-500 mt-3 hidden"></div>
-    <div class="mt-4">
-      <a href="#" onclick="toggleAdminLogin(event)" class="text-xs text-slate-400 hover:text-orange-500 transition" id="adminToggleLink">관리자 로그인</a>
+    <!-- 회원가입 폼 -->
+    <div id="pcRegisterForm" class="hidden">
+      <input id="pcRegId" type="text" placeholder="아이디"
+        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-2">
+      <input id="pcRegPw" type="password" placeholder="비밀번호 (4자 이상)"
+        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-2">
+      <input id="pcRegName" type="text" placeholder="이름 (표시명)"
+        class="w-full rounded-xl border border-slate-200 p-3 text-sm text-center focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none transition mb-3">
+      <button onclick="pcDoRegister()" class="w-full py-3 rounded-xl bg-emerald-500 text-white font-semibold hover:bg-emerald-600 transition">
+        <i class="fa-solid fa-user-plus mr-2"></i>가입하기
+      </button>
+      <div id="pcRegError" class="text-xs text-red-500 mt-3 hidden"></div>
+      <div class="mt-4">
+        <a href="#" onclick="pcToggleRegister(false);event.preventDefault()" class="text-xs text-slate-400 hover:text-orange-500 transition">로그인으로 돌아가기</a>
+      </div>
     </div>
   </div>
 </div>
@@ -1268,81 +1285,90 @@
   let isAdmin = false;
   let isAdminLogin = false;
 
-  function toggleAdminLogin(e){
-    e.preventDefault();
-    isAdminLogin = !isAdminLogin;
-    document.getElementById("adminFields").classList.toggle("hidden", !isAdminLogin);
-    document.getElementById("loginPw").placeholder = isAdminLogin ? "관리자 비밀번호" : "비밀번호 입력";
-    document.getElementById("adminToggleLink").textContent = isAdminLogin ? "일반 로그인" : "관리자 로그인";
+  function pcToggleRegister(show){
+    document.getElementById("pcLoginForm").classList.toggle("hidden", show);
+    document.getElementById("pcRegisterForm").classList.toggle("hidden", !show);
+    document.getElementById("loginError").classList.add("hidden");
+    var pcRegErr = document.getElementById("pcRegError");
+    if (pcRegErr) pcRegErr.classList.add("hidden");
+  }
+
+  async function pcDoRegister(){
+    const id = document.getElementById("pcRegId").value.trim();
+    const pw = document.getElementById("pcRegPw").value.trim();
+    const name = document.getElementById("pcRegName").value.trim();
+    const errEl = document.getElementById("pcRegError");
+    if (!id || !pw || !name){ errEl.textContent="모든 항목을 입력하세요."; errEl.classList.remove("hidden"); return; }
+    errEl.classList.add("hidden");
+    try {
+      const r = await gasRun("serverRegisterUser", id, pw, name);
+      if (r.ok){
+        alert("가입 완료! 로그인해주세요.");
+        document.getElementById("loginId").value = id;
+        pcToggleRegister(false);
+      } else {
+        errEl.textContent = r.error || "가입 실패";
+        errEl.classList.remove("hidden");
+      }
+    } catch(e){ errEl.textContent="오류: "+e.message; errEl.classList.remove("hidden"); }
   }
 
   async function doLogin(){
+    const id = document.getElementById("loginId").value.trim();
     const pw = document.getElementById("loginPw").value.trim();
+    if (!id){ document.getElementById("loginError").textContent="아이디를 입력하세요."; document.getElementById("loginError").classList.remove("hidden"); return; }
     if (!pw){ document.getElementById("loginError").textContent="비밀번호를 입력하세요."; document.getElementById("loginError").classList.remove("hidden"); return; }
     document.getElementById("loginError").classList.add("hidden");
 
-    if (isAdminLogin) {
-      const adminId = (document.getElementById("loginAdminId").value||"").trim();
-      if (!adminId){ document.getElementById("loginError").textContent="관리자 ID를 입력하세요."; document.getElementById("loginError").classList.remove("hidden"); return; }
-      try {
-        const r = await gasRun("serverAdminLogin", adminId, pw);
-        if (r.ok){
-          isAdmin = true;
-          document.getElementById("loginOverlay").style.display="none";
-          document.getElementById("appMain").style.display="";
-          document.getElementById("tabAdmin").classList.remove("hidden");
-          document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user-shield mr-1"></i>관리자';
-          sessionStorage.setItem("on_loggedIn","admin");
-        } else {
-          document.getElementById("loginError").textContent=r.error;
-          document.getElementById("loginError").classList.remove("hidden");
-        }
-      } catch(e) {
-        document.getElementById("loginError").textContent="서버 오류: "+e.message;
+    try {
+      const r = await gasRun("serverUserLogin", id, pw);
+      if (r.ok){
+        const role = r.role || "user";
+        const displayName = r.displayName || id;
+        if (role === "admin") isAdmin = true;
+        document.getElementById("loginOverlay").style.display="none";
+        document.getElementById("appMain").style.display="";
+        if (isAdmin) document.getElementById("tabAdmin").classList.remove("hidden");
+        document.getElementById("loginUserBadge").innerHTML = isAdmin
+          ? '<i class="fa-solid fa-user-shield mr-1"></i>' + displayName
+          : '<i class="fa-solid fa-user mr-1"></i>' + displayName;
+        sessionStorage.setItem("on_loggedIn", JSON.stringify({ role, userId: r.userId, displayName }));
+        loadPcBarcodeMap();
+      } else {
+        document.getElementById("loginError").textContent = r.error || "로그인 실패";
         document.getElementById("loginError").classList.remove("hidden");
       }
-    } else {
-      try {
-        const r = await gasRun("serverCheckPassword", pw);
-        if (r.ok){
-          document.getElementById("loginOverlay").style.display="none";
-          document.getElementById("appMain").style.display="";
-          document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user mr-1"></i>사용자';
-          sessionStorage.setItem("on_loggedIn","user");
-          loadPcBarcodeMap();
-        } else {
-          document.getElementById("loginError").textContent=r.error||"비밀번호가 올바르지 않습니다.";
-          document.getElementById("loginError").classList.remove("hidden");
-        }
-      } catch(e) {
-        document.getElementById("loginError").textContent="서버 오류: "+e.message;
-        document.getElementById("loginError").classList.remove("hidden");
-      }
+    } catch(e) {
+      document.getElementById("loginError").textContent="서버 오류: "+e.message;
+      document.getElementById("loginError").classList.remove("hidden");
     }
   }
   // 로그아웃
   function doLogout(){
     sessionStorage.removeItem("on_loggedIn");
     isAdmin = false;
-    isAdminLogin = false;
     document.getElementById("appMain").style.display="none";
     document.getElementById("loginOverlay").style.display="flex";
+    document.getElementById("loginId").value="";
     document.getElementById("loginPw").value="";
-    document.getElementById("loginAdminId").value="";
-    document.getElementById("adminFields").classList.add("hidden");
     document.getElementById("loginError").classList.add("hidden");
-    document.getElementById("adminToggleLink").textContent="관리자 로그인";
     document.getElementById("tabAdmin").classList.add("hidden");
+    pcToggleRegister(false);
   }
   // 세션 유지 (같은 탭 새로고침 시)
   if (sessionStorage.getItem("on_loggedIn")){
     document.getElementById("loginOverlay").style.display="none";
     document.getElementById("appMain").style.display="";
-    if (sessionStorage.getItem("on_loggedIn")==="admin"){
-      isAdmin = true;
-      document.getElementById("tabAdmin").classList.remove("hidden");
-      document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user-shield mr-1"></i>관리자';
-    } else {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("on_loggedIn"));
+      if (saved.role === "admin"){
+        isAdmin = true;
+        document.getElementById("tabAdmin").classList.remove("hidden");
+        document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user-shield mr-1"></i>' + (saved.displayName || '관리자');
+      } else {
+        document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user mr-1"></i>' + (saved.displayName || '사용자');
+      }
+    } catch(e){
       document.getElementById("loginUserBadge").innerHTML='<i class="fa-solid fa-user mr-1"></i>사용자';
     }
     loadPcBarcodeMap();
@@ -4165,6 +4191,8 @@ async function smartDirectoryPicker() {
     getBarcodeMap:'getBarcodeMap',
     serverGetPickingDetail:'getPickingDetail', serverSavePickingDetail:'savePickingDetail',
     serverSaveInventoryCheck:'saveInventoryCheck', serverGetInventoryCheck:'getInventoryCheck',
+    serverUserLogin:'userLogin', serverRegisterUser:'registerUser',
+    serverGetUsers:'getUsers', serverDeleteUser:'deleteUser', serverGetActivityLogs:'getActivityLogs',
   };
   const _fnArgMap = {
     serverUploadOrders:['rows','uploadedBy'], serverGetUploadSessions:['days'],
@@ -4183,6 +4211,9 @@ async function smartDirectoryPicker() {
     serverGetPickingDetail:['uploadTimestamp'], serverSavePickingDetail:['uploadTimestamp','details'],
     serverEcountGetInventory:['baseDate','whCode','skuList'],
     serverSaveInventoryCheck:['uploadTimestamp','details','completed'], serverGetInventoryCheck:['uploadTimestamp'],
+    serverUserLogin:['userId','password'], serverRegisterUser:['userId','password','displayName'],
+    serverGetUsers:['adminUserId'], serverDeleteUser:['adminUserId','targetUserId'],
+    serverGetActivityLogs:['adminUserId','days'],
   };
   async function gasRun(fnName, ...args) {
     const action = _fnActionMap[fnName] || fnName;
