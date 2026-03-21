@@ -42,7 +42,7 @@
     <input id="loginId" type="text" placeholder="아이디" autocomplete="username" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400 mb-2">
     <input id="loginPw" type="password" placeholder="비밀번호" autocomplete="current-password" class="w-full px-4 py-3 rounded-xl border border-slate-200 text-center text-lg focus:outline-none focus:border-indigo-400">
     <button id="btnLogin" class="w-full mt-3 py-3 rounded-xl bg-indigo-500 text-white font-semibold text-lg active:bg-indigo-600">로그인</button>
-    <p class="text-xs text-slate-300 text-center mt-3">아이디 없으면 비밀번호만 입력</p>
+    <p class="text-xs text-slate-300 text-center mt-3">관리자에게 아이디를 요청하세요</p>
     <div id="loginError" class="text-red-500 text-sm text-center mt-2 hidden"></div>
   </div>
 </div>
@@ -380,13 +380,9 @@ document.getElementById('btnLogin').onclick = async () => {
   const id = document.getElementById('loginId').value.trim();
   const pw = document.getElementById('loginPw').value.trim();
   if (!pw) { showLoginError('비밀번호를 입력하세요.'); return; }
+  if (!id) { showLoginError('아이디를 입력하세요.'); return; }
   try {
-    let r;
-    if (id) {
-      r = await api('userLogin', { userId: id, password: pw });
-    } else {
-      r = await api('checkPassword', { password: pw });
-    }
+    let r = await api('userLogin', { userId: id, password: pw });
     if (r.ok) {
       _currentUser = { userId: r.userId || 'default', displayName: r.displayName || id || '사용자', role: r.role || 'user' };
       sessionStorage.setItem('whs_login', JSON.stringify(_currentUser));
