@@ -3361,76 +3361,33 @@ async function smartDirectoryPicker() {
     document.getElementById("uploadMeta").textContent = `서버 데이터: ${allRows.length.toLocaleString()}건 (캐시)`;
   }
 
-  // 서버 데이터 불러오기 (캐시 우선, 변경시만 재로드)
+  // 서버 데이터 불러오기 → 서버 집계 (전건 전송 대신 집계 결과만)
+  let _serverAnalysisCache = null; // 서버 집계 결과 캐시
+
   document.getElementById("btnLoadServerData").onclick = async ()=>{
     const dateFrom = document.getElementById("analysisDateFrom").value || "";
     const dateTo = document.getElementById("analysisDateTo").value || "";
-    const cKey = _cacheKey(dateFrom, dateTo);
 
-    // 캐시 존재 → 서버 총건수로 변경 여부만 확인 (초경량)
-    if (_orderCache[cKey]) {
-      document.getElementById("analysisMeta").innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i>데이터 변경 확인 중...';
-      try {
-        const countResult = await gasRun("serverGetOrdersCount");
-        if (countResult && countResult.ok && countResult.total === _orderCache[cKey].total) {
-          // 동일 데이터 → 캐시 즉시 사용
-          _applyServerRows(_orderCache[cKey].allRows, dateFrom, dateTo);
-          return;
-        }
-      } catch(e) { /* 카운트 실패시 전체 재로드 */ }
-      // 변경됨 → 캐시 무효화 후 아래에서 재로드
-      delete _orderCache[cKey];
-      _deepAnalysisCache = null;
-    }
-
-    document.getElementById("analysisMeta").innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i>서버에서 데이터 불러오는 중...';
+    document.getElementById("analysisMeta").innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i>서버에서 분석 데이터 집계 중...';
 
     try {
-      const BATCH = 1000;
-      let allRows = [];
-      let offset = 0;
-      let totalFiltered = 0;
-
-      while (true) {
-        const result = await gasRun("serverGetOrdersBatch", dateFrom, dateTo, offset, BATCH);
-        if (!result || !result.ok) {
-          if (allRows.length === 0) {
-            document.getElementById("analysisMeta").textContent = "서버 데이터 로드 실패: " + (result ? result.error : "응답 없음");
-            return;
-          }
-          break;
-        }
-        allRows = allRows.concat(result.rows || []);
-        totalFiltered = result.total || allRows.length;
-        document.getElementById("analysisMeta").innerHTML =
-          `<i class="fa-solid fa-circle-notch fa-spin text-orange-400 mr-2"></i>로딩 중... ${allRows.length.toLocaleString()} / ${totalFiltered.toLocaleString()}건`;
-
-        if (!result.hasMore) break;
-        offset += BATCH;
-      }
-
-      if (!allRows.length) {
-        document.getElementById("analysisMeta").textContent = "서버에 저장된 데이터가 없습니다.";
+      const result = await gasRun("serverGetBasicAnalysis", dateFrom, dateTo);
+      if (!result || !result.ok) {
+        document.getElementById("analysisMeta").textContent = "분석 실패: " + (result ? result.error : "응답 없음");
         return;
       }
 
-      // 캐시 저장
-      _orderCache[cKey] = { total: totalFiltered, allRows, timestamp: Date.now() };
-      _deepAnalysisCache = null; // 새 데이터 → 심층분석 캐시 무효화
-
-      headers = ["주문번호","SKU코드","sku상품명","총출고수량","쇼핑몰","금액","수령자명","SKU상품속성","운송장번호","파일날짜"];
-      rawRows = [headers];
-      for (const r of allRows) {
-        const ud = String(r.uploadDate||"");
-        const dateFormatted = ud.length===8 ? ud.replace(/(\d{4})(\d{2})(\d{2})/, "$1-$2-$3") : ud;
-        rawRows.push([r.orderNo||"", r.sku||"", r.skuName||"", r.qty||0, r.market||"", r.amount||0, r.recipient||"", r.attr||"", r.trackingNo||"", dateFormatted]);
-      }
+      _serverAnalysisCache = result;
+      _deepAnalysisCache = null;
 
       document.getElementById("analysisMeta").innerHTML =
-        `서버 데이터 로드 완료: <b>${allRows.length.toLocaleString()}건</b>` +
+        `서버 집계 완료: <b>${result.totalRows.toLocaleString()}건</b> (SKU ${result.totalSkus}종)` +
         (dateFrom || dateTo ? ` (기간: ${dateFrom||'전체'} ~ ${dateTo||'전체'})` : ' (전체)') +
         ' — [분석 실행] 버튼을 누르세요.';
-      document.getElementById("uploadMeta").textContent = `서버 데이터: ${allRows.length.toLocaleString()}건 로드됨`;
+      document.getElementById("uploadMeta").textContent = `서버 집계: ${result.totalRows.toLocaleString()}건`;
+
+      // rawRows도 세팅 (피킹/ECOUNT 등 다른 탭에서 필요할 수 있으므로 빈 상태 유지)
+      // 분석 실행 시 _serverAnalysisCache가 있으면 서버 집계 결과로 차트 렌더링
 
     } catch(e) {
       document.getElementById("analysisMeta").textContent = "서버 데이터 로드 실패: " + e.message;
@@ -3438,6 +3395,11 @@ async function smartDirectoryPicker() {
   };
 
   document.getElementById("runAnalysis").onclick = ()=>{
+    // 서버 집계 결과가 있으면 바로 렌더링 (전건 로딩 불필요)
+    if (_serverAnalysisCache) {
+      renderFromServerAnalysis(_serverAnalysisCache);
+      return;
+    }
     if (!rawRows.length) return alert("파일을 업로드하거나 서버 데이터를 불러오세요.");
     const {idx: idxMarket} = findSmart(headers, "market", FIXED.market);
     const {idx: idxAmount} = findSmart(headers, "amount", FIXED.amount);
@@ -3712,6 +3674,101 @@ async function smartDirectoryPicker() {
     const filterInfo = hasDateFilter ? ` (필터: ${filteredCount}/${totalCount}행)` : '';
     document.getElementById("analysisMeta").innerHTML = `총매출액: <b>₩${Math.round(totalAmount).toLocaleString()}</b> · 쇼핑몰 ${amountByMarket.size}개${filterInfo}`;
   };
+
+  // === 서버 집계 결과로 기본 분석 렌더링 ===
+  function renderFromServerAnalysis(data) {
+    const { byMarket, skuTop, skuCross, dailyTrend, allMarkets, totalRows, totalSkus } = data;
+
+    // 마켓별 파이차트
+    const labels = allMarkets || Object.keys(byMarket);
+    const amounts = labels.map(m => (byMarket[m]||{}).amt || 0);
+    const totalAmount = amounts.reduce((a,b)=>a+b, 0);
+
+    if (pieChart) pieChart.destroy();
+    pieChart = new Chart(document.getElementById("marketPie"), {
+      type: 'pie',
+      data: { labels, datasets: [{ data: amounts }] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: { callbacks: { label: (ctx) => { const t=ctx.dataset.data.reduce((a,b)=>a+b,0); return `${ctx.label}: ₩${Math.round(ctx.raw).toLocaleString()} (${(ctx.raw/t*100).toFixed(1)}%)`; } } },
+          datalabels: {
+            display: (ctx) => { const ds=ctx.chart.data.datasets[0].data||[]; const pairs=ds.map((v,i)=>({i,v:Number(v)||0})).sort((a,b)=>b.v-a.v); return new Set(pairs.slice(0,5).map(p=>p.i)).has(ctx.dataIndex); },
+            formatter: (value,ctx)=>{ const t=ctx.chart.data.datasets[0].data.reduce((a,b)=>a+b,0); return `${ctx.chart.data.labels[ctx.dataIndex]}\n${(value/t*100).toFixed(1)}%`; },
+            color:'#fff', font:{size:11,weight:'bold'}, textStrokeColor:'rgba(0,0,0,.5)', textStrokeWidth:2
+          }
+        }
+      }
+    });
+
+    // 마켓 테이블
+    const marketRows = labels.map((m,i)=>[i+1, m, '₩'+Math.round(amounts[i]).toLocaleString(), totalAmount?(amounts[i]/totalAmount*100).toFixed(1)+'%':'0%']);
+    renderTable(document.getElementById("marketPieTable"), ["순위","쇼핑몰","금액","비중"], marketRows);
+
+    // 일별 추이 차트
+    const trendDates = Object.keys(dailyTrend||{}).sort();
+    if (trendDates.length >= 2) {
+      const trendMarkets = labels.slice(0,10); // top10
+      if (trendChart) trendChart.destroy();
+      const datasets = trendMarkets.map((m,i)=>({
+        label: m,
+        data: trendDates.map(d => (dailyTrend[d]||{})[m] || 0),
+        borderWidth: 1.5, tension: 0.3, fill: false, pointRadius: 0
+      }));
+      trendChart = new Chart(document.getElementById("trendLineChart"), {
+        type: 'line',
+        data: { labels: trendDates.map(d=>d.substring(5)), datasets },
+        options: { responsive:true, interaction:{mode:'index',intersect:false}, scales:{y:{beginAtZero:true,ticks:{callback:v=>'₩'+(v/10000).toFixed(0)+'만'}}} }
+      });
+      document.getElementById("trendNote").textContent = `일별 매출 추이 (${trendDates[0]} ~ ${trendDates[trendDates.length-1]}, Top10 채널)`;
+    }
+
+    // SKU Top10 차트 + 테이블
+    const skuTop10 = (skuTop||[]).slice(0,10);
+    if (skuBarChart) skuBarChart.destroy();
+    skuBarChart = new Chart(document.getElementById("top10AllChart"), {
+      type: 'bar',
+      data: { labels: skuTop10.map(s=>s.sku), datasets: [{ label:'수량', data: skuTop10.map(s=>s.qty) }] },
+      options: { responsive:true, indexAxis:'y', scales:{x:{beginAtZero:true}} }
+    });
+    renderTable(document.getElementById("top10AllTable"), ["SKU","상품명","총 수량","총 금액"],
+      skuTop10.map(s=>[s.sku, s.name, s.qty, '₩'+Math.round(s.amt).toLocaleString()]));
+
+    // 마켓별 Top10
+    const tmWrap = document.getElementById("top10ByMarketWrap");
+    if (tmWrap) {
+      let tmHtml = '';
+      for (const mkt of labels.slice(0,8)) {
+        const mktSkus = (skuTop||[]).filter(s=>s.markets&&s.markets[mkt]).sort((a,b)=>(b.markets[mkt].amt||0)-(a.markets[mkt].amt||0)).slice(0,10);
+        if (!mktSkus.length) continue;
+        tmHtml += `<div class="mt-4"><h4 class="font-semibold text-sm text-slate-700 mb-2">${mkt} Top10</h4>`;
+        tmHtml += '<div class="overflow-x-auto"><table class="table w-full text-xs"><thead class="bg-slate-50"><tr><th class="px-2 py-1">SKU</th><th class="px-2 py-1">상품명</th><th class="px-2 py-1 text-right">수량</th><th class="px-2 py-1 text-right">금액</th></tr></thead><tbody>';
+        for (const s of mktSkus) {
+          const md = s.markets[mkt]||{};
+          tmHtml += `<tr class="border-t border-slate-100"><td class="px-2 py-1 font-mono">${s.sku}</td><td class="px-2 py-1">${s.name||''}</td><td class="px-2 py-1 text-right">${md.qty||0}</td><td class="px-2 py-1 text-right">₩${Math.round(md.amt||0).toLocaleString()}</td></tr>`;
+        }
+        tmHtml += '</tbody></table></div></div>';
+      }
+      tmWrap.innerHTML = tmHtml;
+    }
+
+    // SKU × Market 교차분석 테이블
+    (() => {
+      const crossSkus = skuCross || [];
+      const crossMarkets = labels.filter(m=>(byMarket[m]||{}).amt > 0).slice(0,10);
+      const crossHeader = ["SKU","상품명","총수량","총금액", ...crossMarkets.map(m=>m+"(수량)"), ...crossMarkets.map(m=>m+"(금액)")];
+      const crossRows = crossSkus.map(s => {
+        const row = [s.sku, s.name, s.qty, '₩'+Math.round(s.amt).toLocaleString()];
+        for (const m of crossMarkets) row.push((s.markets[m]||{}).qty || 0);
+        for (const m of crossMarkets) row.push('₩'+Math.round((s.markets[m]||{}).amt||0).toLocaleString());
+        return row;
+      });
+      renderTable(document.getElementById("crossAnalysisTable"), crossHeader, crossRows);
+    })();
+
+    document.getElementById("analysisMeta").innerHTML = `총매출액: <b>₩${Math.round(totalAmount).toLocaleString()}</b> · 쇼핑몰 ${labels.length}개 · ${totalRows.toLocaleString()}건 (서버 집계)`;
+  }
 
   // === 심층 매출분석 ===
   let deepCharts = {};
@@ -4255,6 +4312,7 @@ async function smartDirectoryPicker() {
     serverGetUsers:'getUsers', serverDeleteUser:'deleteUser', serverGetActivityLogs:'getActivityLogs',
     serverDiagnoseBadData:'diagnoseBadData',
     serverClearAllOrders:'clearAllOrders',
+    serverGetBasicAnalysis:'getBasicAnalysis',
   };
   const _fnArgMap = {
     serverUploadOrders:['rows','uploadedBy'], serverGetUploadSessions:['days'],
@@ -4276,6 +4334,7 @@ async function smartDirectoryPicker() {
     serverUserLogin:['userId','password'], serverRegisterUser:['userId','password','displayName'],
     serverGetUsers:['adminUserId'], serverDeleteUser:['adminUserId','targetUserId'],
     serverGetActivityLogs:['adminUserId','days'],
+    serverGetBasicAnalysis:['dateFrom','dateTo'],
   };
   async function gasRun(fnName, ...args) {
     const action = _fnActionMap[fnName] || fnName;
