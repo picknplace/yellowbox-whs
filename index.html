@@ -3718,14 +3718,14 @@ async function smartDirectoryPicker() {
     // 일별 추이 차트
     const trendDates = Object.keys(dailyTrend||{}).sort();
     if (trendDates.length >= 2) {
-      const trendMarkets = labels.slice(0,10); // top10
-      if (trendChart) trendChart.destroy();
+      const trendMarkets = labels.slice(0,10);
+      if (trendLineChart) trendLineChart.destroy();
       const datasets = trendMarkets.map((m,i)=>({
         label: m,
         data: trendDates.map(d => (dailyTrend[d]||{})[m] || 0),
         borderWidth: 1.5, tension: 0.3, fill: false, pointRadius: 0
       }));
-      trendChart = new Chart(document.getElementById("trendLineChart"), {
+      trendLineChart = new Chart(document.getElementById("trendLineChart"), {
         type: 'line',
         data: { labels: trendDates.map(d=>d.substring(5)), datasets },
         options: { responsive:true, interaction:{mode:'index',intersect:false}, scales:{y:{beginAtZero:true,ticks:{callback:v=>'₩'+(v/10000).toFixed(0)+'만'}}} }
@@ -3735,8 +3735,8 @@ async function smartDirectoryPicker() {
 
     // SKU Top10 차트 + 테이블
     const skuTop10 = (skuTop||[]).slice(0,10);
-    if (skuBarChart) skuBarChart.destroy();
-    skuBarChart = new Chart(document.getElementById("top10AllChart"), {
+    if (top10AllChart) top10AllChart.destroy();
+    top10AllChart = new Chart(document.getElementById("top10AllChart"), {
       type: 'bar',
       data: { labels: skuTop10.map(s=>s.sku), datasets: [{ label:'수량', data: skuTop10.map(s=>s.qty) }] },
       options: { responsive:true, indexAxis:'y', scales:{x:{beginAtZero:true}} }
