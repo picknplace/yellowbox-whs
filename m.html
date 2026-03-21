@@ -369,9 +369,24 @@ if (sessionStorage.getItem('whs_login')) {
 }
 
 document.getElementById('btnLogout').onclick = () => {
+  if (isWorkInProgress() && !confirm('작업 중입니다. 로그아웃하시겠습니까?')) return;
   sessionStorage.removeItem('whs_login');
   location.reload();
 };
+
+// 작업 중 새로고침/뒤로가기 차단
+function isWorkInProgress() {
+  if (currentSession && skuMap.size > 0) {
+    for (const [, info] of skuMap) { if (info.picked > 0) return true; }
+  }
+  if (_invCurrentSession && invMap.size > 0) {
+    for (const [, info] of invMap) { if (info.scanned > 0) return true; }
+  }
+  return false;
+}
+window.addEventListener('beforeunload', (e) => {
+  if (isWorkInProgress()) { e.preventDefault(); e.returnValue = ''; }
+});
 
 // ── 탭 전환 ──
 function switchTab(tab) {
