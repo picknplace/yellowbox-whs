@@ -5250,25 +5250,17 @@ async function smartDirectoryPicker() {
       // N월 폴더: 1월, 12월
       const mMatch = p.match(/^(\d{1,2})월$/);
       if (mMatch) { month = mMatch[1].padStart(2,"0"); continue; }
-      // MMDD 파일/폴더: 0202, 0321
-      if (/^\d{4}\./.test(p) || /^\d{4}$/.test(p.replace(/\.\w+$/,""))) {
-        const digits = p.replace(/\.\w+$/,"").replace(/\D/g,"");
-        if (digits.length === 4) {
-          const mm2 = digits.substring(0,2); const dd2 = digits.substring(2,4);
-          if (Number(mm2)>=1 && Number(mm2)<=12 && Number(dd2)>=1 && Number(dd2)<=31) {
-            month = mm2; day = dd2;
-            continue;
-          }
-        }
-      }
       // YYYYMMDD in filename: 20240105
       const ym = p.match(/(20\d{2})[-.]?(\d{2})[-.]?(\d{2})/);
       if (ym) { year = ym[1]; month = ym[2]; day = ym[3]; continue; }
-      // YYMMDD in filename: 240105
-      const ym2 = p.match(/(\d{2})(\d{2})(\d{2})/);
-      if (ym2 && !year) {
-        const yy2 = Number(ym2[1]);
-        if (yy2 >= 20 && yy2 <= 30) { year = "20"+ym2[1]; month = ym2[2]; day = ym2[3]; }
+      // MMDD 폴더/파일명: 순수 4자리(0202, 0321)만 허용 — 다른 문자 섞인 건 무시
+      const pClean = p.replace(/\.\w+$/, ""); // 확장자 제거
+      if (/^\d{4}$/.test(pClean)) {
+        const mm2 = pClean.substring(0,2); const dd2 = pClean.substring(2,4);
+        if (Number(mm2)>=1 && Number(mm2)<=12 && Number(dd2)>=1 && Number(dd2)<=31) {
+          month = mm2; day = dd2;
+          continue;
+        }
       }
     }
 
