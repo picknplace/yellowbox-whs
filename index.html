@@ -5345,18 +5345,12 @@ async function smartDirectoryPicker() {
       let allServerRows = [];
       const fileResults = [];
 
-      // 사입/위탁 파일만 필터 (판매일력 등 제외)
-      const filteredFiles = allFiles.filter(tf => /사입|위탁/.test(tf.path));
-      if (!filteredFiles.length) {
-        progressEl.innerHTML = `<div class="text-red-600">경로에 "사입" 또는 "위탁"이 포함된 파일이 없습니다. (전체 ${allFiles.length}개 스캔됨)</div>`;
-        return;
-      }
-      progressEl.innerHTML += `<div class="text-slate-500">전체 ${allFiles.length}개 중 사입/위탁 파일 ${filteredFiles.length}개 대상</div>`;
+      let totalSkipBadHeader = 0;
 
-      for (let fi = 0; fi < filteredFiles.length; fi++) {
-        const tf = filteredFiles[fi];
-        if (fi % 10 === 0 || fi === filteredFiles.length - 1) {
-          progressEl.innerHTML = `<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>파싱 [${fi+1}/${filteredFiles.length}] ${tf.name}...</div>`;
+      for (let fi = 0; fi < allFiles.length; fi++) {
+        const tf = allFiles[fi];
+        if (fi % 10 === 0 || fi === allFiles.length - 1) {
+          progressEl.innerHTML = `<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>파싱 [${fi+1}/${allFiles.length}] ${tf.name}...</div>`;
         }
 
         try {
@@ -5379,6 +5373,14 @@ async function smartDirectoryPicker() {
           if (idxSku < 0 || idxQty < 0) {
             totalSkipNoHeader++;
             fileResults.push({ file: tf.path, rows: parsed.length-1, used: 0, dup: 0, error: "SKU/수량 헤더 없음 [" + fileHeaders.slice(0,5).join(",") + "]" });
+            continue;
+          }
+
+          // 헤더 검증: SKU+수량 외에 주문번호/쇼핑몰/금액/수령자 중 1개 이상 있어야 유효한 주문 파일
+          const validColCount = [idxOrder, idxMarket, idxAmount, idxRecipient].filter(v => v >= 0).length;
+          if (validColCount < 1) {
+            totalSkipBadHeader++;
+            fileResults.push({ file: tf.path, rows: parsed.length-1, used: 0, dup: 0, error: "주문 형식 아님 (주문번호/쇼핑몰/금액/수령자 컬럼 없음) [" + fileHeaders.slice(0,8).join(",") + "]" });
             continue;
           }
 
@@ -5431,7 +5433,7 @@ async function smartDirectoryPicker() {
         }
       }
 
-      progressEl.innerHTML = `<div class="text-blue-600">파싱 완료: ${totalParsed}개 파일 (헤더없음 ${totalSkipNoHeader}개 스킵), ${totalRows.toLocaleString()}행 → 분할 후 ${totalExpanded.toLocaleString()}행 (중복 제거 ${totalDedup.toLocaleString()}건)</div>`;
+      progressEl.innerHTML = `<div class="text-blue-600">파싱 완료: ${totalParsed}개 파일 (헤더없음 ${totalSkipNoHeader}개, 형식불일치 ${totalSkipBadHeader}개 스킵), ${totalRows.toLocaleString()}행 → 분할 후 ${totalExpanded.toLocaleString()}행 (중복 제거 ${totalDedup.toLocaleString()}건)</div>`;
 
       // 3단계: 배치 업로드
       if (allServerRows.length === 0) {
