@@ -5354,6 +5354,12 @@ async function smartDirectoryPicker() {
         }
 
         try {
+          // 판매입력/판매일력 파일 제외
+          if (/판매입력|판매일력/.test(tf.name)) {
+            fileResults.push({ file: tf.path, rows: 0, used: 0, dup: 0, error: "판매입력/판매일력 파일 제외" });
+            continue;
+          }
+
           const fileObj = await tf.entry.getFile();
           const parsed = await parseFile(fileObj);
           if (parsed.length <= 1) { fileResults.push({ file: tf.path, rows: 0, used: 0, dup: 0, error: null }); continue; }
