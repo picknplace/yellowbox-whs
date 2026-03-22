@@ -1406,6 +1406,7 @@
   const RACK_CANDS = ["랙위치","로케이션","위치","선반","렉","rack","location","loc","shelf","bin","zone"];
   const CATEGORY_CANDS = ["상품군","카테고리","대분류","중분류","category"];
   const RECIPIENT_CANDS = ["수령자명","수령자","받는분","수취인","receiver","recipient"];
+  const PHONE_CANDS = ["수령자연락처","수령자핸드폰","연락처","전화","핸드폰","휴대폰","phone","tel","mobile","수취인연락처","수취인전화"];
 
   // 동의어/부분일치 헤더 자동탐지
   const SYNONYMS = {
@@ -1629,6 +1630,7 @@
         const {idx: idxOrder}  = findBySynonyms(fileHeaders, ORDERID_CANDS);
         const {idx: idxTracking} = findBySynonyms(fileHeaders, TRACKING_CANDS);
         const {idx: idxRecipient} = findBySynonyms(fileHeaders, RECIPIENT_CANDS);
+        const {idx: idxPhone} = findBySynonyms(fileHeaders, PHONE_CANDS);
 
         if (idxSku>=0 && idxQty>=0) {
           const uploadDate = extractDateFromFilename(f.name);
@@ -1648,7 +1650,8 @@
                 recipient: idxRecipient>=0 ? String(row[idxRecipient]??"").trim() : "",
                 attr: p.attr,
                 trackingNo: idxTracking>=0 ? String(row[idxTracking]??"").trim() : "",
-                uploadDate: uploadDate
+                uploadDate: uploadDate,
+                phone: idxPhone>=0 ? String(row[idxPhone]??"").trim() : ""
               });
             }
           }
@@ -5351,6 +5354,7 @@ async function smartDirectoryPicker() {
           const {idx: idxOrder}  = findBySynonyms(fileHeaders, ORDERID_CANDS);
           const {idx: idxTracking} = findBySynonyms(fileHeaders, TRACKING_CANDS);
           const {idx: idxRecipient} = findBySynonyms(fileHeaders, RECIPIENT_CANDS);
+          const {idx: idxPhone} = findBySynonyms(fileHeaders, PHONE_CANDS);
 
           if (idxSku < 0 || idxQty < 0) {
             totalSkipNoHeader++;
@@ -5390,7 +5394,8 @@ async function smartDirectoryPicker() {
                 recipient,
                 attr: p.attr,
                 trackingNo: idxTracking>=0 ? String(row[idxTracking]??"").trim() : "",
-                uploadDate: pathDate
+                uploadDate: pathDate,
+                phone: idxPhone>=0 ? String(row[idxPhone]??"").trim() : ""
               });
               fileUsed++;
               totalExpanded++;
