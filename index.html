@@ -5474,17 +5474,29 @@ async function smartDirectoryPicker() {
       }
 
       // 4단계: 결과
+      const skippedFiles = fileResults.filter(f => f.error || f.used === 0);
       progressEl.innerHTML = `<div class="text-green-700 font-bold"><i class="fa-solid fa-check mr-1"></i>완료! ${totalParsed}개 파일 → ${allServerRows.length.toLocaleString()}행 전송 → 서버 저장 ${serverSaved.toLocaleString()}건 (서버중복 ${serverDup.toLocaleString()}, 로컬중복 ${totalDedup.toLocaleString()})</div>`;
 
-      // 파일별 상세
-      let detailHtml = '<details class="mt-2"><summary class="text-xs text-blue-500 cursor-pointer">파일별 상세 (' + fileResults.length + '개)</summary>';
-      detailHtml += '<div class="overflow-x-auto mt-1 max-h-96 overflow-y-auto"><table class="w-full text-xs border-collapse"><thead class="sticky top-0 bg-white"><tr class="bg-slate-50"><th class="px-2 py-1 text-left">경로</th><th class="px-2 py-1 text-right">원본행</th><th class="px-2 py-1 text-right">사용</th><th class="px-2 py-1 text-right">중복</th><th class="px-2 py-1 text-left">오류</th></tr></thead><tbody>';
-      for (const fr of fileResults) {
-        const cls = fr.error ? 'text-red-500' : fr.used === 0 ? 'text-slate-400' : '';
-        detailHtml += `<tr class="border-t border-slate-100 ${cls}"><td class="px-2 py-1">${fr.file}</td><td class="px-2 py-1 text-right">${fr.rows}</td><td class="px-2 py-1 text-right">${fr.used}</td><td class="px-2 py-1 text-right">${fr.dup}</td><td class="px-2 py-1">${fr.error||''}</td></tr>`;
+      // 스킵된 파일 목록 (눈에 띄게 표시)
+      let resultHtml = '';
+      if (skippedFiles.length > 0) {
+        resultHtml += `<div class="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg"><div class="font-semibold text-amber-700 mb-2">⚠ 스킵된 파일 ${skippedFiles.length}개</div>`;
+        resultHtml += '<div class="max-h-60 overflow-y-auto text-xs space-y-1">';
+        for (const sf of skippedFiles) {
+          resultHtml += `<div class="text-amber-800"><b>${sf.file}</b> — ${sf.error || '데이터 0건'}</div>`;
+        }
+        resultHtml += '</div></div>';
       }
-      detailHtml += '</tbody></table></div></details>';
-      resultEl.innerHTML = detailHtml;
+
+      // 성공 파일별 상세
+      const usedFiles = fileResults.filter(f => !f.error && f.used > 0);
+      resultHtml += `<details class="mt-2"><summary class="text-xs text-blue-500 cursor-pointer">사용된 파일 상세 (${usedFiles.length}개)</summary>`;
+      resultHtml += '<div class="overflow-x-auto mt-1 max-h-96 overflow-y-auto"><table class="w-full text-xs border-collapse"><thead class="sticky top-0 bg-white"><tr class="bg-slate-50"><th class="px-2 py-1 text-left">경로</th><th class="px-2 py-1 text-right">원본행</th><th class="px-2 py-1 text-right">사용</th><th class="px-2 py-1 text-right">중복</th></tr></thead><tbody>';
+      for (const fr of usedFiles) {
+        resultHtml += `<tr class="border-t border-slate-100"><td class="px-2 py-1">${fr.file}</td><td class="px-2 py-1 text-right">${fr.rows}</td><td class="px-2 py-1 text-right">${fr.used}</td><td class="px-2 py-1 text-right">${fr.dup}</td></tr>`;
+      }
+      resultHtml += '</tbody></table></div></details>';
+      resultEl.innerHTML = resultHtml;
 
     } catch(e) {
       progressEl.innerHTML = `<div class="text-red-500">오류: ${e.message}</div>`;
