@@ -5238,11 +5238,10 @@ async function smartDirectoryPicker() {
     for (const p of parts) {
       // 4자리 연도 폴더: 2024, 2025, 2026
       if (/^(20\d{2})$/.test(p)) { year = p; continue; }
-      // YYMM 폴더: 2401 → year의 뒤2자리+01월 → 24년 01월
+      // YYMM 폴더: 2401 → 24년 01월 (순수 4자리 숫자 폴더)
       if (/^\d{4}$/.test(p) && year) {
         const yy = p.substring(0,2); const mm = p.substring(2,4);
         if (Number(mm) >= 1 && Number(mm) <= 12) {
-          if (!year.startsWith("20")) year = "20" + yy;
           month = mm;
           continue;
         }
@@ -5253,12 +5252,21 @@ async function smartDirectoryPicker() {
       // YYYYMMDD in filename: 20240105
       const ym = p.match(/(20\d{2})[-.]?(\d{2})[-.]?(\d{2})/);
       if (ym) { year = ym[1]; month = ym[2]; day = ym[3]; continue; }
-      // MMDD 폴더/파일명: 순수 4자리(0202, 0321)만 허용 — 다른 문자 섞인 건 무시
-      const pClean = p.replace(/\.\w+$/, ""); // 확장자 제거
+      // MMDD 순수 4자리 폴더: 0317, 0202
+      const pClean = p.replace(/\.\w+$/, "");
       if (/^\d{4}$/.test(pClean)) {
         const mm2 = pClean.substring(0,2); const dd2 = pClean.substring(2,4);
         if (Number(mm2)>=1 && Number(mm2)<=12 && Number(dd2)>=1 && Number(dd2)<=31) {
           month = mm2; day = dd2;
+          continue;
+        }
+      }
+      // 파일명 앞 4자리 MMDD: "0317사입 249건.xlsx" → 03월 17일
+      const leadingMMDD = pClean.match(/^(\d{2})(\d{2})/);
+      if (leadingMMDD) {
+        const lm = Number(leadingMMDD[1]); const ld = Number(leadingMMDD[2]);
+        if (lm >= 1 && lm <= 12 && ld >= 1 && ld <= 31) {
+          month = leadingMMDD[1]; day = leadingMMDD[2];
           continue;
         }
       }
