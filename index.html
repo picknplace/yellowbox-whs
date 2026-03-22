@@ -5345,10 +5345,18 @@ async function smartDirectoryPicker() {
       let allServerRows = [];
       const fileResults = [];
 
-      for (let fi = 0; fi < allFiles.length; fi++) {
-        const tf = allFiles[fi];
-        if (fi % 10 === 0 || fi === allFiles.length - 1) {
-          progressEl.innerHTML = `<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>파싱 [${fi+1}/${allFiles.length}] ${tf.name}...</div>`;
+      // 사입/위탁 파일만 필터 (판매일력 등 제외)
+      const filteredFiles = allFiles.filter(tf => /사입|위탁/.test(tf.path));
+      if (!filteredFiles.length) {
+        progressEl.innerHTML = `<div class="text-red-600">경로에 "사입" 또는 "위탁"이 포함된 파일이 없습니다. (전체 ${allFiles.length}개 스캔됨)</div>`;
+        return;
+      }
+      progressEl.innerHTML += `<div class="text-slate-500">전체 ${allFiles.length}개 중 사입/위탁 파일 ${filteredFiles.length}개 대상</div>`;
+
+      for (let fi = 0; fi < filteredFiles.length; fi++) {
+        const tf = filteredFiles[fi];
+        if (fi % 10 === 0 || fi === filteredFiles.length - 1) {
+          progressEl.innerHTML = `<div class="text-blue-600"><i class="fa-solid fa-spinner fa-spin mr-1"></i>파싱 [${fi+1}/${filteredFiles.length}] ${tf.name}...</div>`;
         }
 
         try {
