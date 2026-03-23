@@ -562,7 +562,10 @@ async function selectSession(ts) {
       let rack = '';
       const attrStr = String(row.attr || '');
       const wmsMatch = attrStr.match(/WMS[=:]([^\s,\n]+)/i);
-      if (wmsMatch) rack = wmsMatch[1];
+      if (wmsMatch) {
+        // HTML 태그 잔여물 제거 (예: "800">O1" → "O1")
+        rack = wmsMatch[1].replace(/<[^>]*>/g, '').replace(/^[\d"'>]+(?=[A-Za-z])/, '');
+      }
       if (skuMap.has(sku)) {
         const existing = skuMap.get(sku);
         existing.target += Number(row.qty) || 0;
