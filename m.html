@@ -561,7 +561,7 @@ async function selectSession(ts) {
       // attr에서 WMS 랙위치 파싱 (예: "사이즈:217,WMS:B5" → "B5")
       let rack = '';
       const attrStr = String(row.attr || '');
-      const wmsMatch = attrStr.match(/WMS[=:]([A-Za-z0-9\-_.]+)/i);
+      const wmsMatch = attrStr.match(/WMS[=:]([^\s,\n]+)/i);
       if (wmsMatch) rack = wmsMatch[1];
       if (skuMap.has(sku)) {
         const existing = skuMap.get(sku);
