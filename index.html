@@ -5455,7 +5455,7 @@ async function smartDirectoryPicker() {
         return;
       }
 
-      const BATCH = 3000;
+      const BATCH = 5000;
       let uploaded = 0, serverSaved = 0, serverDup = 0;
       const totalBatches = Math.ceil(allServerRows.length / BATCH);
 
@@ -5464,7 +5464,12 @@ async function smartDirectoryPicker() {
         progressEl.innerHTML = `<div class="text-green-600"><i class="fa-solid fa-cloud-arrow-up fa-spin mr-1"></i>업로드 배치 ${b+1}/${totalBatches} (${uploaded.toLocaleString()}/${allServerRows.length.toLocaleString()}행)</div>`;
 
         try {
-          const r = await gasRun("serverUploadOrders", batch, "bulk_import");
+          const resp = await fetch(GAS_API_URL, {
+            method: 'POST', redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify({ action: 'serverUploadOrders', rows: batch, uploadedBy: 'bulk_import', skipDupCheck: true }),
+          });
+          const r = await resp.json();
           serverSaved += (r.saved||0);
           serverDup += (r.duplicates||0);
           uploaded += batch.length;
