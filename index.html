@@ -4733,7 +4733,7 @@ async function smartDirectoryPicker() {
 
       if (!data.ok) {
         invSetStatus("fa-solid fa-circle-xmark text-red-500", "조회 실패", data.error);
-        alert("ECOUNT 재고 조회 실패:\n" + data.error);
+        alert("ECOUNT 재고 조회 실패:\n" + data.error + (data.debug ? "\n\n[디버그]\n" + JSON.stringify(data.debug, null, 2) : ""));
         return;
       }
 
