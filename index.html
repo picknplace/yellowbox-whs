@@ -4678,7 +4678,7 @@ async function smartDirectoryPicker() {
     const manualInput = (document.getElementById("invManualSkus").value||"").trim();
     const whCode = "00003";
     const whName = "기본창고(오렌지나무)";
-    const baseDateInput = document.getElementById("invBaseDate").value; // YYYY-MM-DD
+    const baseDateInput = document.getElementById("invBaseDate").value || new Date().toISOString().slice(0,10); // YYYY-MM-DD (기본: 오늘)
     const baseDateStr = baseDateInput.replace(/-/g, ""); // YYYYMMDD
 
     let skus = [];
