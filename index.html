@@ -3699,7 +3699,7 @@ async function smartDirectoryPicker() {
     if (pieChart) pieChart.destroy();
     pieChart = new Chart(document.getElementById("marketPie"), {
       type: 'pie',
-      data: { labels, datasets: [{ data: amounts, backgroundColor: labels.map((_,i)=>`hsl(${i*360/Math.max(labels.length,1)},65%,55%)`) }] },
+      data: { labels, datasets: [{ data: amounts, backgroundColor: labels.map((_,i)=>`hsl(${210 + i*360/Math.max(labels.length,1)},60%,55%)`) }] },
       options: {
         responsive: true,
         plugins: {
