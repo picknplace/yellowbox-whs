@@ -4361,11 +4361,15 @@ async function smartDirectoryPicker() {
     } else if (args.length === 1 && typeof args[0] === 'object') {
       body = { action, ...args[0] };
     }
+    const ctrl = new AbortController();
+    const tmr = setTimeout(() => ctrl.abort(), 300000); // 5분 타임아웃
     const resp = await fetch(GAS_API_URL, {
       method: 'POST', redirect: 'follow',
       headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify(body),
+      signal: ctrl.signal,
     });
+    clearTimeout(tmr);
     return resp.json();
   }
 
