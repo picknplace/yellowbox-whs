@@ -561,7 +561,7 @@ async function selectSession(ts) {
       // attr에서 WMS 랙위치 파싱 (예: "사이즈:217,WMS:B5" → "B5")
       let rack = '';
       const attrStr = String(row.attr || '');
-      const wmsMatch = attrStr.match(/WMS[=:]([^\s,\n]+)/i);
+      const wmsMatch = attrStr.match(/WMS[=:]([A-Za-z0-9\-_.]+)/i);
       if (wmsMatch) rack = wmsMatch[1];
       if (skuMap.has(sku)) {
         const existing = skuMap.get(sku);
@@ -1211,7 +1211,9 @@ async function loadSkuImages() {
 // 로케이션 큰 글자 포맷 (영문 bold + 숫자 색상)
 function formatRackBig(rack) {
   if (!rack) return '';
-  return '<span class="font-mono text-xl leading-tight">' + rack.replace(/([A-Za-z]+)/g, '<span class="font-black text-slate-800">$1</span>').replace(/(\d+)/g, '<span class="font-bold text-indigo-500">$1</span>') + '</span>';
+  // HTML 이스케이프 후 포맷
+  const safe = rack.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return '<span class="font-mono text-2xl font-black leading-tight">' + safe.replace(/([A-Za-z]+)/g, '<span class="text-slate-800">$1</span>').replace(/(\d+)/g, '<span class="text-indigo-500">$1</span>') + '</span>';
 }
 
 // ── UI 렌더링 ──
