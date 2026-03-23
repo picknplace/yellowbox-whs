@@ -815,7 +815,13 @@ function handleScan(code) {
     for (const [, v] of skuMap) { if (v.picked < v.target) { allDone = false; break; } }
     if (allDone) {
       speak('전체 피킹 완료. 오늘도 수고하셨습니다.');
-      setTimeout(() => alert('전체 피킹 완료!\n오늘도 수고하셨습니다.'), 500);
+      setTimeout(() => {
+        alert('전체 피킹 완료!\n오늘도 수고하셨습니다.');
+        // 스캔 중지 후 세션 목록으로 복귀
+        if (scannerRunning) stopScanner();
+        switchTab('picking');
+        loadSessions();
+      }, 500);
     } else {
       speak(`${info.target}개 스캔 완료. 다음 스큐로 넘어갑니다.`);
     }
