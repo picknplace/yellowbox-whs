@@ -446,8 +446,7 @@ function onLoginSuccess() {
   if (_currentUser.role === 'admin') {
     document.getElementById('tabAdmin').classList.remove('hidden');
   }
-  loadSessions();
-  loadBarcodeMap();
+  Promise.all([loadSessions(), loadBarcodeMap()]);
 }
 
 // 자동 로그인
